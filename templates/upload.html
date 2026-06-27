@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Загрузка видео — UltraStream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head>
+<body class="bg-zinc-950 text-white">
+
+    <!-- Navbar -->
+    <nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+        <div class="max-w-screen-2xl mx-auto px-8 h-16 flex items-center justify-between">
+            <a href="/" class="flex items-center gap-x-3">
+                <div class="w-9 h-9 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center">
+                    <span class="font-bold text-2xl">US</span>
+                </div>
+                <span class="font-semibold text-3xl tracking-tighter">UltraStream</span>
+            </a>
+
+            <div class="flex items-center gap-x-4">
+                <div class="flex items-center gap-x-3 bg-zinc-900 border border-zinc-700 rounded-3xl pl-1 pr-5 py-1">
+                    <div class="w-8 h-8 bg-zinc-700 rounded-2xl flex items-center justify-center text-xs font-bold">
+                        {{ current_user.username[0].upper() }}
+                    </div>
+                    <span class="text-sm font-medium">{{ current_user.username }}</span>
+                </div>
+                <a href="{{ url_for('logout') }}" class="text-sm px-4 py-2 text-zinc-400 hover:text-white">Выйти</a>
+            </div>
+        </div>
+    </nav>
+
+    <div class="max-w-2xl mx-auto px-6 py-10" id="upload-form-section">
+        <h1 class="text-4xl font-semibold tracking-tight mb-2">Загрузить видео</h1>
+        <p class="text-zinc-400 mb-8">Заполните информацию</p>
+
+        <!-- Глобальные ошибки -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="mb-6 px-5 py-3.5 rounded-2xl text-sm flex items-center gap-x-3
+                        {% if category == 'error' %}bg-red-500/10 text-red-400 border border-red-500/30{% else %}bg-emerald-500/10 text-emerald-400 border border-emerald-500/30{% endif %}">
+                        <i class="fa-solid {% if category == 'error' %}fa-exclamation-circle{% else %}fa-check-circle{% endif %}"></i>
+                        <span>{{ message }}</span>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <form id="upload-form" class="space-y-6">
+            <!-- Видео файл -->
+            <div>
+                <label class="block text-sm font-semibold text-zinc-300 mb-2">Видео файл <span class="text-red-400">*</span></label>
+                <div class="border-2 border-dashed border-zinc-700 hover:border-zinc-500 transition-colors rounded-3xl p-8 text-center cursor-pointer" id="video-drop">
+                    <i class="fa-solid fa-video text-4xl text-zinc-500 mb-3"></i>
+                    <p class="font-medium">Перетащите видео или нажмите</p>
+                    <p class="text-xs text-zinc-500 mt-1">MP4 • до 2 ГБ</p>
+                    <input type="file" name="video" id="video-input" accept="video/mp4" class="hidden" required>
+                </div>
+                <div id="video-info" class="hidden mt-3 bg-zinc-900 border border-zinc-700 rounded-2xl px-4 py-3 flex items-center gap-x-3">
+                    <i class="fa-solid fa-file-video text-violet-400 text-xl"></i>
+                    <div class="flex-1 min-w-0">
+                        <p id="video-name" class="font-medium text-sm truncate"></p>
+                        <p id="video-size" class="text-xs text-zinc-500"></p>
+                    </div>
+                    <button type="button" onclick="removeVideo()" class="text-red-400 hover:text-red-500 text-xl">×</button>
+                </div>
+            </div>
+
+            <!-- Обложка -->
+            <div>
+                <label class="block text-sm font-semibold text-zinc-300 mb-2">Обложка видео (необязательно)</label>
+                <div class="border-2 border-dashed border-zinc-700 hover:border-zinc-500 transition-colors rounded-3xl p-6 text-center cursor-pointer" id="cover-drop">
+                    <i class="fa-solid fa-image text-3xl text-zinc-500 mb-2"></i>
+                    <p class="text-sm font-medium">Загрузить обложку</p>
+                    <input type="file" name="cover" id="cover-input" accept="image/*" class="hidden">
+                </div>
+
+                <!-- Превью обложки -->
+                <div id="cover-preview" class="hidden mt-4">
+                    <div class="flex items-center gap-x-4 bg-zinc-900 border border-zinc-700 rounded-2xl p-3">
+                        <img id="cover-img" class="w-24 h-16 object-cover rounded-xl border border-zinc-600">
+                        <div class="flex-1">
+                            <p id="cover-name" class="font-medium text-sm"></p>
+                            <button type="button" onclick="removeCover()" 
+                                    class="text-xs text-red-400 hover:text-red-500 mt-1">Удалить обложку</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Название -->
+            <div>
+                <label class="block text-sm font-semibold text-zinc-300 mb-2">Название видео <span class="text-red-400">*</span></label>
+                <input type="text" name="title" required 
+                       class="w-full bg-zinc-950 border border-zinc-700 focus:border-violet-500 rounded-2xl px-4 py-3.5 outline-none text-lg"
+                       placeholder="Например: Полёт над горами">
+            </div>
+
+            <!-- Описание -->
+            <div>
+                <label class="block text-sm font-semibold text-zinc-300 mb-2">Описание</label>
+                <textarea name="description" rows="4" 
+                          class="w-full bg-zinc-950 border border-zinc-700 focus:border-violet-500 rounded-3xl px-4 py-3.5 outline-none resize-y"
+                          placeholder="Краткое описание видео..."></textarea>
+            </div>
+            
+            <button type="submit" 
+                    class="w-full bg-white text-black font-semibold py-4 rounded-2xl flex items-center justify-center gap-x-2 text-lg">
+                <i class="fa-solid fa-upload"></i>
+                <span>Загрузить видео</span>
+            </button>
+        </form>
+    </div>
+
+    <!-- ==================== ЭКРАН ЗАГРУЗКИ ==================== -->
+    <div id="uploading-screen" class="hidden fixed inset-0 bg-zinc-950/95 flex items-center justify-center z-50">
+        <div class="text-center max-w-md px-6">
+            <div class="w-16 h-16 mx-auto mb-6 border-4 border-zinc-700 border-t-white rounded-full animate-spin"></div>
+            
+            <h2 class="text-2xl font-semibold mb-2">Загрузка видео...</h2>
+            <p id="upload-status" class="text-zinc-400 mb-6">Пожалуйста, не закрывайте страницу</p>
+
+            <!-- Прогресс бар (опционально) -->
+            <div class="w-full bg-zinc-800 rounded-full h-2 mb-2">
+                <div id="progress-bar" class="bg-white h-2 rounded-full transition-all" style="width: 0%"></div>
+            </div>
+            <p id="progress-text" class="text-sm text-zinc-500">0%</p>
+        </div>
+    </div>
+
+
+    <script>
+        // === Видео ===
+        const videoDrop = document.getElementById('video-drop');
+        const videoInput = document.getElementById('video-input');
+        const videoInfo = document.getElementById('video-info');
+        const videoName = document.getElementById('video-name');
+        const videoSize = document.getElementById('video-size');
+
+        videoDrop.addEventListener('click', () => videoInput.click());
+        videoInput.addEventListener('change', () => {
+            if (videoInput.files.length > 0) showVideoInfo(videoInput.files[0]);
+        });
+
+        function showVideoInfo(file) {
+            videoName.textContent = file.name;
+            videoSize.textContent = (file.size / (1024 * 1024)).toFixed(1) + ' МБ';
+            videoInfo.classList.remove('hidden');
+            videoDrop.classList.add('hidden');
+        }
+
+        function removeVideo() {
+            videoInput.value = '';
+            videoInfo.classList.add('hidden');
+            videoDrop.classList.remove('hidden');
+        }
+
+        // === Обложка ===
+        const coverDrop = document.getElementById('cover-drop');
+        const coverInput = document.getElementById('cover-input');
+        const coverPreview = document.getElementById('cover-preview');
+        const coverImg = document.getElementById('cover-img');
+        const coverName = document.getElementById('cover-name');
+
+        coverDrop.addEventListener('click', () => coverInput.click());
+        coverInput.addEventListener('change', () => {
+            if (coverInput.files.length > 0) showCoverPreview(coverInput.files[0]);
+        });
+
+        function showCoverPreview(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                coverImg.src = e.target.result;
+                coverName.textContent = file.name;
+                coverPreview.classList.remove('hidden');
+                coverDrop.classList.add('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function removeCover() {
+            coverInput.value = '';
+            coverPreview.classList.add('hidden');
+            coverDrop.classList.remove('hidden');
+        }
+
+        // Drag & Drop для видео
+        videoDrop.addEventListener('dragover', e => { e.preventDefault(); videoDrop.classList.add('border-violet-500'); });
+        videoDrop.addEventListener('dragleave', () => videoDrop.classList.remove('border-violet-500'));
+        videoDrop.addEventListener('drop', e => {
+            e.preventDefault();
+            videoDrop.classList.remove('border-violet-500');
+            if (e.dataTransfer.files.length > 0) {
+                videoInput.files = e.dataTransfer.files;
+                showVideoInfo(e.dataTransfer.files[0]);
+            }
+        });
+        const form = document.getElementById('upload-form');
+        const uploadingScreen = document.getElementById('uploading-screen');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const statusText = document.getElementById('upload-status');
+
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault(); // Отключаем обычную отправку
+
+            // Показываем экран загрузки
+            document.getElementById('upload-form-section').classList.add('hidden');
+            uploadingScreen.classList.remove('hidden');
+
+            const formData = new FormData(form);
+
+            try {
+                // === ТВОЯ СИСТЕМА ОТПРАВКИ ===
+                // Здесь можешь использовать свою функцию отправки
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    // Успешно
+                    statusText.textContent = "Видео успешно загружено!";
+                    progressBar.style.width = "100%";
+                    progressText.textContent = "100%";
+
+                    setTimeout(() => {
+                        window.location.href = "/"; // или куда хочешь
+                    }, 1200);
+                } else {
+                    // Ошибка
+                    const errorText = await response.text();
+                    statusText.textContent = "Ошибка при загрузке";
+                    statusText.classList.add('text-red-400');
+                    alert("Ошибка: " + errorText);
+                    
+                    // Возвращаем форму
+                    setTimeout(() => {
+                        uploadingScreen.classList.add('hidden');
+                        document.getElementById('upload-form-section').classList.remove('hidden');
+                    }, 2000);
+                }
+            } catch (error) {
+                statusText.textContent = "Ошибка соединения";
+                statusText.classList.add('text-red-400');
+                console.error(error);
+            }
+        });
+
+        // Опционально: прогресс загрузки (если нужно точнее)
+        // Для этого лучше использовать XMLHttpRequest вместо fetch
+    </script>
+</body>
+</html>

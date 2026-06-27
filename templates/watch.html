@@ -1,0 +1,729 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ video.title }} — UltraStream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        
+        .player-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+        }
+        
+        video {
+            display: block;
+            width: 100%;
+            height: auto;
+        }
+        
+        .custom-player-controls {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+            padding: 20px 16px 16px;
+            transform: translateY(100%);
+            transition: transform 0.3s ease;
+            z-index: 20;
+        }
+        
+        .player-container:hover .custom-player-controls,
+        .custom-player-controls.active {
+            transform: translateY(0);
+        }
+        
+        .progress-bar-container {
+            width: 100%;
+            height: 5px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 3px;
+            margin-bottom: 12px;
+            cursor: pointer;
+            position: relative;
+        }
+        
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #10b981, #059669);
+            border-radius: 3px;
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+        
+        .progress-hover {
+            position: absolute;
+            height: 100%;
+            background: rgba(16, 185, 129, 0.6);
+            border-radius: 3px;
+            pointer-events: none;
+            display: none;
+        }
+        
+        .progress-bar-container:hover .progress-hover {
+            display: block;
+            background: rgba(16, 185, 129, 1);
+        }
+        
+        .controls-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            color: white;
+        }
+        
+        .control-btn {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 16px;
+            padding: 4px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s ease;
+            border-radius: 4px;
+        }
+        
+        .control-btn:hover {
+            background: rgba(255,255,255,0.1);
+            color: #10b981;
+        }
+        
+        .time-display {
+            font-size: 12px;
+            font-variant-numeric: tabular-nums;
+            min-width: 90px;
+            text-align: center;
+        }
+        
+        .volume-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-right: 4px;
+            position: relative;
+        }
+        
+        .volume-slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 60px;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            outline: none;
+            border-radius: 2px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .volume-control:hover .volume-slider {
+            width: 80px;
+            background: rgba(255,255,255,0.3);
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 12px;
+            height: 12px;
+            background: #10b981;
+            cursor: pointer;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+        
+        .volume-slider:hover::-webkit-slider-thumb {
+            width: 14px;
+            height: 14px;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+        
+        .volume-slider::-moz-range-thumb {
+            width: 12px;
+            height: 12px;
+            background: #10b981;
+            cursor: pointer;
+            border: none;
+            border-radius: 50%;
+            transition: all 0.2s ease;
+        }
+        
+        .volume-slider:hover::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+        }
+        
+        .spacer {
+            flex: 1;
+        }
+        
+        .speed-menu,
+        .quality-menu {
+            position: absolute;
+            bottom: 50px;
+            right: 0;
+            background: rgba(0,0,0,0.95);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            overflow: hidden;
+            min-width: 100px;
+            display: none;
+            z-index: 30;
+        }
+        
+        .speed-menu.active,
+        .quality-menu.active {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .menu-item {
+            padding: 10px 16px;
+            color: white;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s ease;
+            border-left: 2px solid transparent;
+            background: transparent;
+            width: 100%;
+            text-align: left;
+        }
+        
+        .menu-item:hover {
+            background: rgba(16, 185, 129, 0.2);
+        }
+        
+        .menu-item.active {
+            background: rgba(16, 185, 129, 0.3);
+            border-left-color: #10b981;
+            color: #10b981;
+        }
+
+        .quality-btn {
+            transition: all 0.2s ease;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white">
+    <!-- Navbar -->
+    <nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-screen-2xl mx-auto px-8 h-16 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-x-3">
+            <div class="w-9 h-9 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center">
+                <span class="font-bold text-2xl">US</span>
+            </div>
+            <span class="font-semibold text-3xl tracking-tighter">UltraStream</span>
+        </a>
+
+        <div class="flex items-center gap-x-4">
+            {% if current_user.is_authenticated %}
+                <!-- Авторизованный пользователь -->
+                <a href="{{ url_for('upload_page') }}" 
+                   class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100 flex items-center gap-x-2">
+                    <i class="fa-solid fa-upload"></i>
+                    <span>Загрузить видео</span>
+                </a>
+
+                <div class="flex items-center gap-x-3 bg-zinc-900 border border-zinc-700 rounded-3xl pl-1 pr-5 py-1">
+                    <div class="w-8 h-8 bg-zinc-700 rounded-2xl flex items-center justify-center text-xs font-bold">
+                        {{ current_user.username[0].upper() }}
+                    </div>
+                    <span class="text-sm font-medium">{{ current_user.username }}</span>
+                </div>
+
+                <a href="{{ url_for('logout') }}" class="text-sm px-4 py-2 text-zinc-400 hover:text-white">Выйти</a>
+            {% else %}
+                <!-- Гость -->
+                <a href="{{ url_for('login') }}" class="px-5 py-2 text-sm font-medium hover:bg-zinc-900 rounded-2xl border border-zinc-700">Войти</a>
+                <a href="{{ url_for('register') }}" class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100">Регистрация</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+    <div class="max-w-screen-2xl mx-auto px-8 pt-8 pb-12">
+        <!-- Заголовок видео -->
+        <div class="mb-6">
+            <h1 class="text-4xl font-semibold tracking-tighter">{{ video.title }}</h1>
+            <div class="flex items-center gap-x-4 text-zinc-400 mt-2 text-sm">
+                <span>{{ video.year }}</span>
+                <span>•</span>
+                <span>{{ video.duration }}</span>
+            </div>
+        </div>
+
+        <!-- Плеер -->
+        <div class="bg-black rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
+            <div class="player-container" id="player-container">
+                <!-- Предпросмотр/Loading индикатор -->
+                <div id="preview-overlay" class="absolute inset-0 bg-black/60 flex items-center justify-center z-10 transition-opacity">
+                    <div class="text-center">
+                        <div class="w-16 h-16 border-4 border-zinc-700 border-t-white rounded-full animate-spin mb-4"></div>
+                        <p class="text-white text-sm">Загрузка видео...</p>
+                    </div>
+                </div>
+                
+                <video id="video-player" 
+                       class="w-full bg-black" 
+                       style="aspect-ratio: {% if video.format == 'vertical' %}9/16{% else %}16/9{% endif %}"
+                       poster="../{{ video.thumbnail }}"
+                       playsinline
+                       preload="metadata">
+                </video>
+
+                <!-- Кастомные элементы управления -->
+                <div class="custom-player-controls" id="player-controls">
+                    <!-- Progress Bar -->
+                    <div class="progress-bar-container" id="progress-container">
+                        <div class="progress-bar" id="progress-bar"></div>
+                        <div class="progress-hover" id="progress-hover"></div>
+                    </div>
+
+                    <!-- Controls Row -->
+                    <div class="controls-row">
+                        <!-- Play/Pause -->
+                        <button class="control-btn" id="play-btn" title="Воспроизвести">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+
+                        <!-- Volume -->
+                        <div class="volume-control">
+                            <button class="control-btn" id="volume-btn" title="Громкость">
+                                <i class="fa-solid fa-volume-high"></i>
+                            </button>
+                            <input type="range" class="volume-slider" id="volume-slider" min="0" max="100" value="100">
+                        </div>
+
+                        <!-- Time Display -->
+                        <div class="time-display">
+                            <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+                        </div>
+
+                        <!-- Spacer -->
+                        <div class="spacer"></div>
+
+                        <!-- Speed Menu -->
+                        <div style="position: relative;">
+                            <button class="control-btn" id="speed-btn" title="Скорость">
+                                <span style="font-size: 12px; font-weight: 600;">1x</span>
+                            </button>
+                            <div class="speed-menu" id="speed-menu">
+                                <button class="menu-item" data-speed="0.5">0.5x</button>
+                                <button class="menu-item" data-speed="0.75">0.75x</button>
+                                <button class="menu-item active" data-speed="1">1x</button>
+                                <button class="menu-item" data-speed="1.25">1.25x</button>
+                                <button class="menu-item" data-speed="1.5">1.5x</button>
+                                <button class="menu-item" data-speed="2">2x</button>
+                            </div>
+                        </div>
+
+                        <!-- Quality Menu -->
+                        <div style="position: relative;">
+                            <button class="control-btn" id="quality-btn" title="Качество">
+                                <i class="fa-solid fa-cog"></i>
+                            </button>
+                            <div class="quality-menu" id="quality-menu">
+                                <!-- Генерируется JavaScript -->
+                            </div>
+                        </div>
+
+                        <!-- Fullscreen -->
+                        <button class="control-btn" id="fullscreen-btn" title="Полный экран">
+                            <i class="fa-solid fa-expand"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Описание -->
+        <div class="mt-8 max-w-3xl">
+            <h4 class="font-semibold mb-2">Описание</h4>
+            <p class="text-zinc-400">{{ video.description }}</p>
+        </div>
+    </div>
+
+    <script>
+        // ==================== DOM Elements ====================
+        const video = document.getElementById('video-player');
+        const playerContainer = document.getElementById('player-container');
+        const playerControls = document.getElementById('player-controls');
+        const previewOverlay = document.getElementById('preview-overlay');
+        
+        // Controls
+        const playBtn = document.getElementById('play-btn');
+        const progressContainer = document.getElementById('progress-container');
+        const progressBar = document.getElementById('progress-bar');
+        const progressHover = document.getElementById('progress-hover');
+        const currentTimeDisplay = document.getElementById('current-time');
+        const durationDisplay = document.getElementById('duration');
+        const volumeBtn = document.getElementById('volume-btn');
+        const volumeSlider = document.getElementById('volume-slider');
+        const speedBtn = document.getElementById('speed-btn');
+        const speedMenu = document.getElementById('speed-menu');
+        const qualityBtn = document.getElementById('quality-btn');
+        const qualityMenu = document.getElementById('quality-menu');
+        const fullscreenBtn = document.getElementById('fullscreen-btn');
+        
+        // Данные из Python
+        const VIDEO_ID = "{{ video_id }}";
+        const AVAILABLE_QUALITIES = {{ video.qualities | tojson }};
+
+        // ==================== State ====================
+        let isPlaying = false;
+        let currentQuality = null;
+        let controlsHideTimeout = null;
+
+        // ==================== Utilities ====================
+        function formatTime(seconds) {
+            if (!isFinite(seconds)) return '0:00';
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const secs = Math.floor(seconds % 60);
+            
+            if (hours > 0) {
+                return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+            }
+            return `${minutes}:${String(secs).padStart(2, '0')}`;
+        }
+
+        function hideControls() {
+            if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
+            if (!isPlaying) return;
+            
+            controlsHideTimeout = setTimeout(() => {
+                playerControls.classList.remove('active');
+            }, 3000);
+        }
+
+        // ==================== Quality Selection ====================
+        function getBestQuality() {
+            const savedQuality = localStorage.getItem('lastQuality_' + VIDEO_ID);
+            if (savedQuality && AVAILABLE_QUALITIES.includes(savedQuality)) {
+                return savedQuality;
+            }
+            return AVAILABLE_QUALITIES[0] || '720p';
+        }
+
+        function updateQualityMenu() {
+            qualityMenu.innerHTML = '';
+            AVAILABLE_QUALITIES.forEach(quality => {
+                const item = document.createElement('button');
+                item.className = `menu-item ${quality === currentQuality ? 'active' : ''}`;
+                item.textContent = quality;
+                item.dataset.quality = quality;
+                item.onclick = () => switchQuality(quality);
+                qualityMenu.appendChild(item);
+            });
+        }
+
+        function switchQuality(newQuality) {
+            if (newQuality === currentQuality) return;
+
+            const currentTime = video.currentTime;
+            const wasPlaying = !video.paused && !video.ended;
+
+            currentQuality = newQuality;
+            localStorage.setItem('lastQuality_' + VIDEO_ID, newQuality);
+
+            previewOverlay.style.opacity = '1';
+            previewOverlay.style.pointerEvents = 'auto';
+
+            video.src = `/video/${VIDEO_ID}/${newQuality}`;
+            video.load();
+
+            const restore = () => {
+                video.currentTime = currentTime;
+                if (wasPlaying) video.play().catch(() => {});
+                video.removeEventListener('canplay', restore);
+            };
+
+            video.addEventListener('canplay', restore, { once: true });
+            updateQualityMenu();
+            qualityMenu.classList.remove('active');
+        }
+
+        // ==================== Play/Pause ====================
+        function togglePlay() {
+            if (video.paused) {
+                video.play();
+            } else {
+                video.pause();
+            }
+        }
+
+        // ==================== Progress Bar ====================
+        function updateProgress() {
+            const percent = (video.currentTime / video.duration) * 100;
+            progressBar.style.width = percent + '%';
+            currentTimeDisplay.textContent = formatTime(video.currentTime);
+        }
+
+        function seekTo(e) {
+            const rect = progressContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const percent = x / rect.width;
+            video.currentTime = percent * video.duration;
+        }
+
+        progressContainer.addEventListener('click', seekTo);
+        progressContainer.addEventListener('mousemove', (e) => {
+            const rect = progressContainer.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const percent = (x / rect.width) * 100;
+            progressHover.style.width = percent + '%';
+        });
+
+        // ==================== Volume ====================
+        function updateVolume() {
+            const volume = volumeSlider.value / 100;
+            video.volume = volume;
+            
+            if (volume === 0) {
+                volumeBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
+            } else if (volume < 0.5) {
+                volumeBtn.innerHTML = '<i class="fa-solid fa-volume-low"></i>';
+            } else {
+                volumeBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
+            }
+        }
+
+        volumeSlider.addEventListener('input', updateVolume);
+        volumeSlider.addEventListener('click', (e) => e.stopPropagation());
+        
+        // Регулировка громкости колесиком мыши
+        volumeSlider.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const currentVolume = parseInt(volumeSlider.value);
+            if (e.deltaY < 0) {
+                volumeSlider.value = Math.min(100, currentVolume + 5);
+            } else {
+                volumeSlider.value = Math.max(0, currentVolume - 5);
+            }
+            updateVolume();
+        });
+        
+        volumeBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (volumeSlider.value > 0) {
+                volumeSlider.value = 0;
+            } else {
+                volumeSlider.value = 100;
+            }
+            updateVolume();
+        });
+
+        // ==================== Speed Control ====================
+        speedBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            speedMenu.classList.toggle('active');
+            qualityMenu.classList.remove('active');
+        });
+
+        speedMenu.querySelectorAll('.menu-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const speed = parseFloat(e.target.dataset.speed);
+                video.playbackRate = speed;
+                
+                speedMenu.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+                e.target.classList.add('active');
+                speedBtn.innerHTML = `<span style="font-size: 12px; font-weight: 600;">${speed}x</span>`;
+                speedMenu.classList.remove('active');
+            });
+        });
+
+        // ==================== Quality Control ====================
+        qualityBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            qualityMenu.classList.toggle('active');
+            speedMenu.classList.remove('active');
+        });
+
+        // ==================== Fullscreen ====================
+        fullscreenBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (!document.fullscreenElement) {
+                playerContainer.requestFullscreen().catch(err => {
+                    console.log('Ошибка полноэкрана:', err);
+                });
+                fullscreenBtn.innerHTML = '<i class="fa-solid fa-compress"></i>';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
+            }
+        });
+
+        // ==================== Play Button UI ====================
+        playBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            togglePlay();
+        });
+        
+        // Клик по видео для воспроизведения/паузы
+        playerContainer.addEventListener('click', (e) => {
+            // Не реагируем на клики по элементам управления плеера
+            if (e.target.closest('.custom-player-controls')) return;
+            // Также не реагируем на клики по видео при открытых меню
+            if (speedMenu.classList.contains('active') || qualityMenu.classList.contains('active')) return;
+            
+            togglePlay();
+        });
+        
+        video.addEventListener('play', () => {
+            isPlaying = true;
+            playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+            playerControls.classList.add('active');
+            hideControls();
+        });
+
+        video.addEventListener('pause', () => {
+            isPlaying = false;
+            playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+            playerControls.classList.add('active');
+            if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
+            playerControls.classList.add('active');
+        });
+
+        // ==================== Time Display ====================
+        video.addEventListener('loadedmetadata', () => {
+            durationDisplay.textContent = formatTime(video.duration);
+        });
+
+        video.addEventListener('timeupdate', updateProgress);
+
+        // ==================== Controls Show/Hide ====================
+        playerContainer.addEventListener('mousemove', () => {
+            playerControls.classList.add('active');
+            hideControls();
+        });
+
+        playerContainer.addEventListener('mouseleave', () => {
+            if (isPlaying) {
+                playerControls.classList.remove('active');
+            }
+        });
+
+        // Hide controls on click outside menus
+        document.addEventListener('click', (e) => {
+            if (!speedBtn.contains(e.target) && !speedMenu.contains(e.target)) {
+                speedMenu.classList.remove('active');
+            }
+            if (!qualityBtn.contains(e.target) && !qualityMenu.contains(e.target)) {
+                qualityMenu.classList.remove('active');
+            }
+            
+            // Показываем контролы при клике на видео
+            if (playerContainer.contains(e.target)) {
+                playerControls.classList.add('active');
+                hideControls();
+            }
+        });
+
+        // ==================== Preview Overlay ====================
+        video.addEventListener('play', () => {
+            previewOverlay.style.opacity = '0';
+            previewOverlay.style.pointerEvents = 'none';
+        });
+
+        // ==================== Error Handling ====================
+        let errorRetryCount = 0;
+        video.addEventListener('error', () => {
+            errorRetryCount++;
+            
+            if (errorRetryCount === 1 && currentQuality !== AVAILABLE_QUALITIES[0]) {
+                console.warn(`Качество ${currentQuality} недоступно, переключаемся на ${AVAILABLE_QUALITIES[0]}`);
+                switchQuality(AVAILABLE_QUALITIES[0]);
+                return;
+            }
+            
+            previewOverlay.innerHTML = `
+                <div class="text-center p-8">
+                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-400 mb-4"></i>
+                    <p class="font-semibold text-white">Видео не найдено</p>
+                    <p class="text-zinc-400 text-sm mt-2">
+                        Не удалось загрузить видео. Проверьте, что файлы находятся в папке videos/
+                    </p>
+                </div>
+            `;
+        });
+
+        // ==================== Keyboard Controls ====================
+        document.addEventListener('keydown', (e) => {
+            // Не обрабатываем события, если фокус на input элементе
+            if (e.target.matches('input, textarea')) return;
+            
+            switch(e.code) {
+                case 'Space':
+                    e.preventDefault();
+                    togglePlay();
+                    break;
+                    
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    video.currentTime = Math.max(0, video.currentTime - 5);
+                    break;
+                    
+                case 'ArrowRight':
+                    e.preventDefault();
+                    video.currentTime = Math.min(video.duration, video.currentTime + 5);
+                    break;
+                    
+                case 'ArrowUp':
+                    e.preventDefault();
+                    volumeSlider.value = Math.min(100, parseInt(volumeSlider.value) + 10);
+                    updateVolume();
+                    break;
+                    
+                case 'ArrowDown':
+                    e.preventDefault();
+                    volumeSlider.value = Math.max(0, parseInt(volumeSlider.value) - 10);
+                    updateVolume();
+                    break;
+                    
+                case 'KeyF':
+                    e.preventDefault();
+                    fullscreenBtn.click();
+                    break;
+                    
+                case 'KeyM':
+                    e.preventDefault();
+                    volumeBtn.click();
+                    break;
+            }
+        });
+
+        // ==================== Initialize ====================
+        function initPlayer() {
+            currentQuality = getBestQuality();
+            video.src = `/video/${VIDEO_ID}/${currentQuality}`;
+            video.volume = 0.5;
+            volumeSlider.value = 50;
+            updateVolume();
+            updateQualityMenu();
+            
+            // Показываем превью покуда видео не запущено
+            previewOverlay.style.opacity = '1';
+            previewOverlay.style.pointerEvents = 'auto';
+            previewOverlay.innerHTML = `
+                <div class="flex flex-col items-center justify-center gap-4">
+                    <div class="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center">
+                        <i class="fa-solid fa-play text-4xl text-emerald-400"></i>
+                    </div>
+                    <p class="text-white text-sm font-medium">Нажмите play для начала</p>
+                </div>
+            `;
+        }
+
+        window.onload = initPlayer;
+    </script>
+</body>
+</html>

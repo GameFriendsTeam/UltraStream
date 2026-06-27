@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>UltraStream — Все видео</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body class="bg-zinc-950 text-white">
+    <nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-screen-2xl mx-auto px-8 h-16 flex items-center justify-between">
+        <a href="/" class="flex items-center gap-x-3">
+            <div class="w-9 h-9 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center">
+                <span class="font-bold text-2xl">US</span>
+            </div>
+            <span class="font-semibold text-3xl tracking-tighter">UltraStream</span>
+        </a>
+
+        <div class="flex items-center gap-x-4">
+            {% if current_user.is_authenticated %}
+                <!-- Авторизованный пользователь -->
+                <a href="{{ url_for('upload_page') }}" 
+                   class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100 flex items-center gap-x-2">
+                    <i class="fa-solid fa-upload"></i>
+                    <span>Загрузить видео</span>
+                </a>
+
+                <div class="flex items-center gap-x-3 bg-zinc-900 border border-zinc-700 rounded-3xl pl-1 pr-5 py-1">
+                    <div class="w-8 h-8 bg-zinc-700 rounded-2xl flex items-center justify-center text-xs font-bold">
+                        {{ current_user.username[0].upper() }}
+                    </div>
+                    <span class="text-sm font-medium">{{ current_user.username }}</span>
+                </div>
+
+                <a href="{{ url_for('logout') }}" class="text-sm px-4 py-2 text-zinc-400 hover:text-white">Выйти</a>
+            {% else %}
+                <!-- Гость -->
+                <a href="{{ url_for('login') }}" class="px-5 py-2 text-sm font-medium hover:bg-zinc-900 rounded-2xl border border-zinc-700">Войти</a>
+                <a href="{{ url_for('register') }}" class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100">Регистрация</a>
+            {% endif %}
+        </div>
+    </div>
+</nav>
+
+    <div class="max-w-screen-2xl mx-auto px-8 py-10">
+        <h1 class="text-5xl font-semibold tracking-tighter mb-2">Все видео</h1>
+        <p class="text-zinc-400 mb-8">Выберите ролик для просмотра</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+            {% for video_id, video in videos.items() %}
+            <a href="/watch/{{ video_id }}" class="group block">
+                <div class="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-zinc-700 transition-all">
+                    <div class="relative">
+                        <img src="{{ video.thumbnail }}" 
+                             class="w-full object-cover group-hover:scale-105 transition-transform duration-500"
+                             style="aspect-ratio: {% if video.format == 'vertical' %}9/16{% else %}16/9{% endif %}">
+                        <div class="absolute bottom-3 right-3 flex items-center gap-2">
+                            <div class="bg-black/70 text-white text-xs px-2.5 py-1 rounded-xl font-medium">
+                                {{ video.duration }}
+                            </div>
+                            {% if video.format == 'vertical' %}
+                            <div class="bg-violet-500/70 text-white text-xs px-2.5 py-1 rounded-xl font-medium flex items-center gap-1">
+                                <i class="fa-solid fa-mobile"></i>
+                                Vertical
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="p-5">
+                        <h3 class="font-semibold text-xl tracking-tight">{{ video.title }}</h3>
+                        <p class="text-zinc-400 text-sm mt-1 line-clamp-2">{{ video.description }}</p>
+                        
+                        <div class="flex flex-wrap gap-1.5 mt-4">
+                            {% for q in video.qualities %}
+                                <span class="text-[10px] px-2.5 py-0.5 rounded-full border border-zinc-700 text-zinc-400">{{ q }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</body>
+</html>

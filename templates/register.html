@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Регистрация — UltraStream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-zinc-950 text-white flex items-center justify-center min-h-screen">
+    <div class="w-full max-w-md px-6">
+        <div class="flex justify-center mb-8">
+            <div class="flex items-center gap-x-3">
+                <div class="w-11 h-11 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center">
+                    <span class="font-bold text-3xl">US</span>
+                </div>
+                <span class="font-semibold text-4xl tracking-tighter">UltraStream</span>
+            </div>
+        </div>
+
+        <div class="bg-zinc-900 border border-zinc-800 rounded-3xl p-8">
+            <h1 class="text-3xl font-semibold text-center mb-6">Регистрация</h1>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="mb-4 p-3 rounded-2xl text-sm {% if category == 'error' %}bg-red-500/10 text-red-400{% else %}bg-emerald-500/10 text-emerald-400{% endif %}">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <form method="POST">
+                <div class="mb-4">
+                    <label class="block text-sm text-zinc-400 mb-1">Имя пользователя</label>
+                    <input type="text" name="username" required class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-sm text-zinc-400 mb-1">Пароль</label>
+                    <input type="password" name="password" required class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3">
+                </div>
+                <div class="mb-6">
+                    <label class="block text-sm text-zinc-400 mb-1">Повторите пароль</label>
+                    <input type="password" name="confirm_password" required class="w-full bg-zinc-950 border border-zinc-700 rounded-2xl px-4 py-3">
+                </div>
+                <button type="submit" class="w-full bg-white text-black font-semibold py-3 rounded-2xl hover:bg-zinc-100">Зарегистрироваться</button>
+            </form>
+
+            <p class="text-center text-sm mt-6 text-zinc-400">
+                Уже есть аккаунт? <a href="{{ url_for('login') }}" class="text-violet-400 hover:underline">Войти</a>
+            </p>
+        </div>
+    </div>
+</body>
+</html>
