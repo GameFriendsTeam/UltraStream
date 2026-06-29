@@ -217,6 +217,9 @@ def upload_page():
         if video_file.size > 10 * 1024 * 1024 * 1024:
             flash('Видео слишком большое (максимум 10 ГБ)', 'error')
             return Response(status=400)
+        if cover_file and cover_file.size > 5 * 1024 * 1024:
+            flash('Обложка слишком большая (максимум 5 МБ)', 'error')
+            return Response(status=400)
 
         title = request.form.get('title', '')
         description = request.form.get('description', '')
