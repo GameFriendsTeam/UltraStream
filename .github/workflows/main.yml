@@ -70,7 +70,7 @@ jobs:
       - name: Build release archive
         run: |
           VERSION="${{ github.event.inputs.version }}"
-          zip -r "ultiastream-${VERSION}.zip" . \
+          zip -r "ultrastream-${VERSION}.zip" . \
             --exclude "*.git*" \
             --exclude "*.pyc" \
             --exclude "__pycache__/*" \
@@ -78,7 +78,7 @@ jobs:
             --exclude "videos/*" \
             --exclude "thumbnail/*" \
             --exclude "users.db"
-          echo "ARCHIVE=ultiastream-${VERSION}.zip" >> "$GITHUB_ENV"
+          echo "ARCHIVE=ultrastream-${VERSION}.zip" >> "$GITHUB_ENV"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
