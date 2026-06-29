@@ -20,6 +20,11 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+VERSION = "1.0.1"
+def get_version():
+    global VERSION
+    return VERSION
+
 # ==================== БАЗА ДАННЫХ ====================
 def get_db():
     conn = sqlite3.connect('users.db')
@@ -282,9 +287,27 @@ if __name__ == '__main__':
     parser.add_argument('--host', '-H', default='0.0.0.0', help='IP-адрес для прослушивания (по умолчанию: все интерфейсы)')
     parser.add_argument('--port', '-p', type=int, default=5000, help='Порт для прослушивания (по умолчанию: 5000)')
     parser.add_argument('--debug', '-d', action='store_true', help='Запуск в режиме отладки')
-    parser.add_argument('--video_dir', '-v', default='videos', help='Путь к директории с видео (по умолчанию: videos)')
+    parser.add_argument('--video_dir', '-v', default='videos', help='Путь к директории для видео (по умолчанию: videos)')
     parser.add_argument('--thumbnail_dir', '-t', default='thumbnail', help='thumbnail dir')
+    parser.add_argument('--version', '-V', action='version', version='Show program version')
+    parser.add_argument('--no-check-update', '-N', action='store_true', help='Cancel check update')
     args = parser.parse_args()
+
+    if args.version:
+        print(f"UltraStream {get_version()}")
+        exit()
+
+    check_update = not args.no_check_update
+    if check_update:
+        from updater import check_update, get_latest_release, update
+        if check_update():
+            print("Update available!")
+            i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
+            if i:
+                update(get_latest_release())
+        else:
+            print("No update available.")
+        exit()
 
     VIDEOS_DIR = args.video_dir
     VIDEOS = get_videos(args.video_dir)

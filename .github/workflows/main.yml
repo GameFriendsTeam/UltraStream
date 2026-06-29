@@ -1,105 +1,137 @@
-name: CI/CD
+name: CI / Publish
 
 on:
   push:
     branches: [ main ]
+    tags:
+      - "v*.*.*"
   pull_request:
     branches: [ main ]
   workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g. v1.0.0)"
-        required: true
-        type: string
-      release_notes:
-        description: "Release notes"
-        required: false
-        default: ""
-        type: string
 
 jobs:
-  test:
-    name: Test
+
+  # ─────────────────────────────────────────────
+  # JOB 1 — Lint
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: pip
+
+      - name: Install lint deps
+        run: pip install flake8
+
+      - name: Run flake8
+        run: flake8 . --max-line-length=120 --exclude=venv,.venv
+
+  # ─────────────────────────────────────────────
+  # JOB 2 — Tests
+  # ─────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Smoke-check imports
-        run: |
-          python -c "import sql"
-          python -c "import thumbnail"
-          python -c "import loader"
-        env:
-          FLASK_ENV: testing
+      # ┌─────────────────────────────────────────┐
+      # │  Добавь сюда свои тесты                 │
+      # │                                         │
+      # │  Например, если используешь pytest:     │
+      # │    pip install pytest pytest-cov        │
+      # │    pytest tests/ -v --tb=short          │
+      # │                                         │
+      # │  Или unittest:                          │
+      # │    python -m unittest discover tests/   │
+      # └─────────────────────────────────────────┘
+      - name: Placeholder — replace with real tests
+        run: echo "No tests yet. Add pytest / unittest here."
 
+  # ─────────────────────────────────────────────
+  # JOB 3 — Publish (только на теге v*.*.*)
+  # ─────────────────────────────────────────────
   publish:
     name: Publish
     runs-on: ubuntu-latest
     needs: test
-    if: github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v')
+
     permissions:
-      contents: write
+      contents: write   # нужно для создания GitHub Release
 
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # нужен полный history для changelog
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: pip
 
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      - name: Build release archive
+      # Собираем архив с исходниками (без venv, .git и т.п.)
+      - name: Build source archive
         run: |
-          VERSION="${{ github.event.inputs.version }}"
-          zip -r "ultiastream-${VERSION}.zip" . \
+          TAG=${GITHUB_REF_NAME}
+          zip -r "UltiaStream-${TAG}.zip" . \
             --exclude "*.git*" \
-            --exclude "*.pyc" \
-            --exclude "__pycache__/*" \
             --exclude "venv/*" \
+            --exclude ".venv/*" \
+            --exclude "__pycache__/*" \
+            --exclude "*.pyc" \
+            --exclude "users.db" \
             --exclude "videos/*" \
-            --exclude "thumbnail/*" \
-            --exclude "users.db"
-          echo "ARCHIVE=ultiastream-${VERSION}.zip" >> "$GITHUB_ENV"
+            --exclude "thumbnail/*"
 
+      # Авто-генерируем changelog из коммитов с момента предыдущего тега
+      - name: Generate changelog
+        id: changelog
+        run: |
+          PREV_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            NOTES=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges)
+          else
+            NOTES=$(git log --pretty=format:"- %s (%h)" --no-merges)
+          fi
+          echo "notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$NOTES"     >> $GITHUB_OUTPUT
+          echo "EOF"        >> $GITHUB_OUTPUT
+
+      # Создаём GitHub Release и прикладываем архив
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.inputs.version }}
-          name: "UltiaStream ${{ github.event.inputs.version }}"
+          tag_name: ${{ github.ref_name }}
+          name: "UltiaStream ${{ github.ref_name }}"
           body: |
-            ## UltiaStream ${{ github.event.inputs.version }}
-
-            ${{ github.event.inputs.release_notes }}
+            ## Что изменилось
+            ${{ steps.changelog.outputs.notes }}
 
             ---
-            **Установка:**
-            ```bash
-            pip install -r requirements.txt
-            python srv.py
-            ```
-
-            > Требуется Python 3.10+, ffmpeg/ffprobe в PATH.
-            > Для GPU-транскодирования — NVIDIA с NVENC/CUDA.
-          files: ${{ env.ARCHIVE }}
+            > Собрано автоматически через GitHub Actions.
           draft: false
-          prerelease: ${{ contains(github.event.inputs.version, 'alpha') || contains(github.event.inputs.version, 'beta') || contains(github.event.inputs.version, 'rc') }}
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: "UltiaStream-${{ github.ref_name }}.zip"
