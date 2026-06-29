@@ -1,4 +1,4 @@
-# UltiaStream
+# UltraStream
 
 Самостоятельный видеохостинг на Flask: загрузка видео, автоматическое транскодирование в несколько разрешений с GPU-ускорением (NVIDIA NVENC/CUDA), потоковая раздача с поддержкой `Range`-запросов и простая авторизация пользователей.
 
@@ -28,8 +28,8 @@
 ## Установка
 
 ```bash
-git clone https://github.com/GameFriendsTeam/UltiaStream.git
-cd UltiaStream
+git clone https://github.com/GameFriendsTeam/UltraStream.git
+cd UltraStream
 
 python3 -m venv venv
 source venv/bin/activate   # Windows: venv\Scripts\activate
@@ -96,7 +96,7 @@ python loader.py --upload \
 ## Структура проекта
 
 ```
-UltiaStream/
+UltraStream/
 ├── srv.py              # Flask-приложение: маршруты, авторизация, стриминг
 ├── loader.py            # Транскодирование и обработка видео (ffmpeg/ffprobe)
 ├── thumbnail.py         # Генерация и хранение миниатюр
