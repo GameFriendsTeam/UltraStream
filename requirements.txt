@@ -2,4 +2,4 @@ Flask>=3.0.0
 Flask-Login>=0.6.3
 Werkzeug>=3.0.0
 anyascii>=0.3.2
-dotenv>=1.0.0
+dotenv>=0.0.5
