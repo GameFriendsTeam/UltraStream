@@ -226,7 +226,7 @@ def upload_page():
         if len(description) >= 400:
             flash('Описание слишком длинное (максимум 400 символов)', 'error')
             return Response(status=400)
-        if title == '':
+        if not title.strip():
             flash('название обязательно', 'error')
             return Response(status=400)
 
