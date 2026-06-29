@@ -234,6 +234,9 @@ def upload_page():
 
         video_id = str(uuid.uuid4())[:16]
         target_dir = str(Path(VIDEOS_DIR) / video_id)
+        if os.path.exists(str(target_dir)):
+            video_id = str(uuid.uuid4())[:16]
+            target_dir = str(Path(VIDEOS_DIR) / video_id)
         os.makedirs(target_dir, exist_ok=False)
 
         cover_path = ''
