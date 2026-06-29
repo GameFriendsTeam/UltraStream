@@ -6,6 +6,7 @@ import utils
 import subprocess
 from pathlib import Path
 from srv import get_version
+import traceback
 
 
 def get_latest_release():
@@ -13,17 +14,18 @@ def get_latest_release():
         response = requests.get(
             "https://api.github.com/repos/GameFriendsTeam/UltraStream/releases")
         response.raise_for_status()
-        releases = requests.get(response).json()
+        releases = response.json()
         if releases:
-            release = filter(
+            release = list(filter(
                 lambda r: not r.get(
                     "prerelease",
                     False),
-                releases)[0]
+                releases))[0]
             if release:
                 return (release.get("tag_name"), release.get("assets", []))
     except requests.RequestException as e:
         print(f"Error checking for updates: {e}")
+        traceback.print_exception(e)
         return False
 
 
@@ -56,10 +58,9 @@ def check_update():
     majorT, minorT, deltaT = map(int, tag.split('.'))
     if majorT > major or (majorT == major and minorT > minor) or (
             majorT == major and minorT == minor and deltaT > delta):
-        print(f"Update available: {tag} (current: {current_version})")
+        print(f"Update available: {tag} (new: {tag}, current: {current_version})")
         return True
     else:
-        print(f"No update available. Current version: {current_version}")
         return False
 
 

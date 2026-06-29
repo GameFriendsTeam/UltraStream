@@ -272,6 +272,7 @@ def make_multi_output_cmd(
         ) -> tuple[str, list[str]]:
     cmd = [
         'ffmpeg',
+        "-hide_banner",
         '-hwaccel', 'cuda',
         '-hwaccel_output_format', 'cuda',
         '-c:v', get_decoder_lib_by_codec_name(video_meta['video_codec']),   # декодирование на GPU
@@ -369,7 +370,7 @@ if __name__ == '__main__':
     parser.add_argument('--upload', "-ul", action='store_true', help='Upload a new video')
 
     parser.add_argument('--target-dir', '-td', type=str, help='Target directory for the video (e.g. \'videos\')')
-    parser.add_argument('--video-file', -"v", type=str, help='Path to the video file to upload')
+    parser.add_argument('--video-file', "-v", type=str, help='Path to the video file to upload')
     parser.add_argument('--title', "-ti", type=str, help='Title of the video')
     parser.add_argument('--description', "-d", type=str, default='', help='Description of the video')
     parser.add_argument('--thumbnail', "-th", type=str, default='', help='Path to thumbnail')

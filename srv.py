@@ -3,25 +3,28 @@ import tempfile
 from flask import Flask, abort, render_template, request, redirect, url_for, flash, Response, send_file
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
+from loader import get_videos, upload_video
+from dotenv import load_dotenv
 from anyascii import anyascii
 import mimetypes
 import uuid
-from werkzeug.utils import secure_filename
-from loader import get_videos, upload_video
 import thumbnail
 import sqlite3
 import os
 import traceback
 import hashlib
 
+load_dotenv()
+
 app = Flask(__name__)
-app.secret_key = 'super-secret-key-change-me'   # ← обязательно поменяй!
+app.secret_key = os.getenv("SECRET_KEY", "MUST-BE-FILLED")
 
 login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 
 
 def get_version():
@@ -330,6 +333,7 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(
         description='Запуск Flask-сервера для видео-платформы')
+
     parser.add_argument(
         '--host',
         '-H',
@@ -359,13 +363,14 @@ if __name__ == '__main__':
     parser.add_argument(
         '--version',
         '-V',
-        action='version',
-        version='Show program version')
+        action='store_true',
+        help='Show program version')
     parser.add_argument(
         '--no-check-update',
         '-N',
         action='store_true',
         help='Cancel check update')
+
     args = parser.parse_args()
 
     if args.version:
@@ -383,7 +388,6 @@ if __name__ == '__main__':
                 update(get_latest_release())
         else:
             print("No update available.")
-        exit()
 
     VIDEOS_DIR = args.video_dir
     VIDEOS = get_videos(args.video_dir)
