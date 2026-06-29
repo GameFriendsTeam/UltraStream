@@ -177,6 +177,13 @@ def register():
 
         try:
             conn = get_db()
+            user = conn.execute(
+                'SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+            
+            if user:
+                flash('Такой пользователь уже существует', 'error')
+                return redirect(url_for('register'))
+
             conn.execute(
                 'INSERT INTO users (username, password) VALUES (?, ?)',
                 (username,
