@@ -223,6 +223,8 @@ def upload_page():
 
         title = request.form.get('title', '')
         description = request.form.get('description', '')
+        if len(title) >= 64:
+            flash('Название слишком длинное (максимум 64 символов)', 'error')
         if len(description) >= 400:
             flash('Описание слишком длинное (максимум 400 символов)', 'error')
             return Response(status=400)
