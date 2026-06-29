@@ -4,726 +4,785 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ video.title }} — UltraStream</title>
+
+    <!-- ==================== Open Graph / Эмбединг TG + Discord ==================== -->
+    <meta property="og:type" content="video.other">
+    <meta property="og:site_name" content="UltraStream">
+    <meta property="og:title" content="{{ video.title }}">
+    <meta property="og:description" content="{{ video.description or 'Смотреть на UltraStream' }}">
+    {% if thumbnail_url %}
+    <meta property="og:image" content="{{ thumbnail_url }}">
+    <meta property="og:image:width" content="1280">
+    <meta property="og:image:height" content="720">
+    {% endif %}
+    <meta property="og:url" content="{{ base_url }}/watch/{{ video_id }}">
+    <!-- Встроенное видео для Discord/Telegram -->
+    <meta property="og:video" content="{{ base_url }}/video/{{ video_id }}/{{ video.qualities[0] if video.qualities else '720p' }}">
+    <meta property="og:video:secure_url" content="{{ base_url }}/video/{{ video_id }}/{{ video.qualities[0] if video.qualities else '720p' }}">
+    <meta property="og:video:type" content="video/mp4">
+    <meta property="og:video:width" content="1280">
+    <meta property="og:video:height" content="720">
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="player">
+    <meta name="twitter:title" content="{{ video.title }}">
+    <meta name="twitter:description" content="{{ video.description or 'Смотреть на UltraStream' }}">
+    {% if thumbnail_url %}
+    <meta name="twitter:image" content="{{ thumbnail_url }}">
+    {% endif %}
+    <meta name="twitter:player" content="{{ base_url }}/watch/{{ video_id }}">
+    <meta name="twitter:player:width" content="1280">
+    <meta name="twitter:player:height" content="720">
+    <!-- ============================================================================= -->
+
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <style>
         body { font-family: 'Inter', system-ui, sans-serif; }
-        
+
+        /* ===== Плеер ===== */
+        .player-wrapper {
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            background: #000;
+            border-radius: 1.25rem;
+            overflow: hidden;
+        }
+
         .player-container {
             position: relative;
-            width: 100%;
             background: #000;
+            width: 100%;
+            /* Соотношение сторон устанавливается JS после loadedmetadata */
+            aspect-ratio: 16/9;
+            max-height: 90vh;
         }
-        
+
+        .player-container.is-vertical {
+            width: auto;
+            max-width: min(420px, 100%);
+            aspect-ratio: 9/16;
+            max-height: 88vh;
+            margin: 0 auto;
+        }
+
         video {
             display: block;
             width: 100%;
-            height: auto;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
         }
-        
+
+        /* Управление */
         .custom-player-controls {
             position: absolute;
             bottom: 0;
             left: 0;
             right: 0;
-            background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
-            padding: 20px 16px 16px;
+            background: linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 100%);
+            padding: 24px 14px 14px;
             transform: translateY(100%);
-            transition: transform 0.3s ease;
+            transition: transform 0.25s ease;
             z-index: 20;
         }
-        
         .player-container:hover .custom-player-controls,
-        .custom-player-controls.active {
-            transform: translateY(0);
-        }
-        
+        .custom-player-controls.active { transform: translateY(0); }
+
         .progress-bar-container {
             width: 100%;
-            height: 5px;
+            height: 4px;
             background: rgba(255,255,255,0.2);
-            border-radius: 3px;
+            border-radius: 4px;
             margin-bottom: 12px;
             cursor: pointer;
             position: relative;
+            transition: height 0.15s;
         }
-        
+        .player-container:hover .progress-bar-container { height: 6px; }
         .progress-bar {
             height: 100%;
-            background: linear-gradient(90deg, #10b981, #059669);
-            border-radius: 3px;
+            background: linear-gradient(90deg, #8b5cf6, #6d28d9);
+            border-radius: 4px;
             width: 0%;
-            transition: width 0.1s linear;
+            pointer-events: none;
         }
-        
         .progress-hover {
             position: absolute;
-            height: 100%;
-            background: rgba(16, 185, 129, 0.6);
-            border-radius: 3px;
+            top: 0; height: 100%;
+            background: rgba(139,92,246,0.4);
+            border-radius: 4px;
             pointer-events: none;
             display: none;
         }
-        
-        .progress-bar-container:hover .progress-hover {
-            display: block;
-            background: rgba(16, 185, 129, 1);
-        }
-        
+        .progress-bar-container:hover .progress-hover { display: block; }
+
         .controls-row {
             display: flex;
             align-items: center;
-            gap: 12px;
+            gap: 10px;
             color: white;
         }
-        
         .control-btn {
-            background: none;
-            border: none;
-            color: white;
-            cursor: pointer;
-            font-size: 16px;
-            padding: 4px 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            transition: all 0.2s ease;
-            border-radius: 4px;
+            background: none; border: none; color: white;
+            cursor: pointer; font-size: 15px;
+            padding: 5px 8px;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+            border-radius: 6px;
+            flex-shrink: 0;
         }
-        
-        .control-btn:hover {
-            background: rgba(255,255,255,0.1);
-            color: #10b981;
-        }
-        
+        .control-btn:hover { background: rgba(255,255,255,0.12); color: #a78bfa; }
+
         .time-display {
             font-size: 12px;
             font-variant-numeric: tabular-nums;
-            min-width: 90px;
-            text-align: center;
+            white-space: nowrap;
+            opacity: 0.85;
         }
-        
-        .volume-control {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-right: 4px;
-            position: relative;
-        }
-        
+        .spacer { flex: 1; }
+
+        .volume-control { display: flex; align-items: center; gap: 6px; }
         .volume-slider {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 60px;
-            height: 4px;
-            background: rgba(255,255,255,0.2);
-            outline: none;
-            border-radius: 2px;
-            cursor: pointer;
-            transition: all 0.2s ease;
+            -webkit-appearance: none; appearance: none;
+            width: 56px; height: 3px;
+            background: rgba(255,255,255,0.25);
+            outline: none; border-radius: 2px; cursor: pointer;
+            transition: width 0.2s;
         }
-        
-        .volume-control:hover .volume-slider {
-            width: 80px;
-            background: rgba(255,255,255,0.3);
-        }
-        
+        .volume-control:hover .volume-slider { width: 72px; }
         .volume-slider::-webkit-slider-thumb {
-            -webkit-appearance: none;
-            appearance: none;
-            width: 12px;
-            height: 12px;
-            background: #10b981;
-            cursor: pointer;
-            border-radius: 50%;
-            transition: all 0.2s ease;
+            -webkit-appearance: none; appearance: none;
+            width: 11px; height: 11px; background: #a78bfa;
+            cursor: pointer; border-radius: 50%;
         }
-        
-        .volume-slider:hover::-webkit-slider-thumb {
-            width: 14px;
-            height: 14px;
-            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
-        }
-        
         .volume-slider::-moz-range-thumb {
-            width: 12px;
-            height: 12px;
-            background: #10b981;
-            cursor: pointer;
-            border: none;
-            border-radius: 50%;
-            transition: all 0.2s ease;
-        }
-        
-        .volume-slider:hover::-moz-range-thumb {
-            width: 14px;
-            height: 14px;
-            box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
-        }
-        
-        .spacer {
-            flex: 1;
-        }
-        
-        .speed-menu,
-        .quality-menu {
-            position: absolute;
-            bottom: 50px;
-            right: 0;
-            background: rgba(0,0,0,0.95);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px;
-            overflow: hidden;
-            min-width: 100px;
-            display: none;
-            z-index: 30;
-        }
-        
-        .speed-menu.active,
-        .quality-menu.active {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .menu-item {
-            padding: 10px 16px;
-            color: white;
-            cursor: pointer;
-            font-size: 13px;
-            transition: all 0.2s ease;
-            border-left: 2px solid transparent;
-            background: transparent;
-            width: 100%;
-            text-align: left;
-        }
-        
-        .menu-item:hover {
-            background: rgba(16, 185, 129, 0.2);
-        }
-        
-        .menu-item.active {
-            background: rgba(16, 185, 129, 0.3);
-            border-left-color: #10b981;
-            color: #10b981;
+            width: 11px; height: 11px; background: #a78bfa;
+            cursor: pointer; border: none; border-radius: 50%;
         }
 
-        .quality-btn {
-            transition: all 0.2s ease;
+        .speed-menu, .quality-menu {
+            position: absolute;
+            bottom: 44px; right: 0;
+            background: rgba(15,15,20,0.97);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 10px; overflow: hidden;
+            min-width: 90px; display: none; z-index: 30;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
         }
+        .speed-menu.active, .quality-menu.active { display: flex; flex-direction: column; }
+
+        .menu-item {
+            padding: 9px 14px; color: rgba(255,255,255,0.85);
+            cursor: pointer; font-size: 13px;
+            border-left: 2px solid transparent;
+            background: transparent; width: 100%; text-align: left;
+            transition: all 0.15s;
+        }
+        .menu-item:hover { background: rgba(139,92,246,0.15); color: #fff; }
+        .menu-item.active {
+            background: rgba(139,92,246,0.25);
+            border-left-color: #8b5cf6; color: #c4b5fd;
+        }
+
+        /* ===== Мобильный плеер — тапнуть для управления ===== */
+        @media (max-width: 768px) {
+            .custom-player-controls { padding: 20px 10px 10px; transform: translateY(0) !important; opacity: 0; transition: opacity 0.3s; }
+            .custom-player-controls.active { opacity: 1; }
+            .volume-control { display: none; }
+            .time-display { font-size: 11px; }
+        }
+
+        /* ===== Комментарии ===== */
+        .comment-avatar {
+            width: 32px; height: 32px; border-radius: 10px;
+            background: #4c1d95;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 13px; font-weight: 700; flex-shrink: 0;
+        }
+        .comment-card {
+            background: #18181b;
+            border: 1px solid #27272a;
+            border-radius: 14px;
+            padding: 12px 14px;
+            transition: border-color 0.15s;
+        }
+        .comment-card:hover { border-color: #3f3f46; }
     </style>
 </head>
 <body class="bg-zinc-950 text-white">
-    <!-- Navbar -->
-    <nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
-    <div class="max-w-screen-2xl mx-auto px-8 h-16 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-x-3">
-            <div class="w-9 h-9 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center">
-                <span class="font-bold text-2xl">US</span>
+
+<!-- Navbar -->
+<nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-screen-2xl mx-auto px-4 sm:px-8 h-14 sm:h-16 flex items-center gap-x-3">
+        <a href="/" class="flex items-center gap-x-2 shrink-0">
+            <div class="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center">
+                <span class="font-bold text-sm">US</span>
             </div>
-            <span class="font-semibold text-3xl tracking-tighter">UltraStream</span>
+            <span class="font-semibold text-lg tracking-tighter hidden sm:block">UltraStream</span>
         </a>
 
-        <div class="flex items-center gap-x-4">
+        <!-- Поиск (мини) -->
+        <form method="get" action="/" class="flex-1 max-w-md mx-auto">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-xs"></i>
+                <input type="text" name="q" placeholder="Поиск..."
+                    class="w-full bg-zinc-900 border border-zinc-800 rounded-2xl pl-8 pr-3 py-1.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-violet-600">
+            </div>
+        </form>
+
+        <div class="flex items-center gap-x-2 shrink-0">
             {% if current_user.is_authenticated %}
-                <!-- Авторизованный пользователь -->
-                <a href="{{ url_for('upload_page') }}" 
-                   class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100 flex items-center gap-x-2">
-                    <i class="fa-solid fa-upload"></i>
-                    <span>Загрузить видео</span>
+                <a href="{{ url_for('upload_page') }}" class="px-3 py-1.5 bg-white text-black text-xs sm:text-sm font-semibold rounded-xl hover:bg-zinc-100 hidden sm:flex items-center gap-x-1">
+                    <i class="fa-solid fa-upload"></i><span>Загрузить</span>
                 </a>
-
-                <div class="flex items-center gap-x-3 bg-zinc-900 border border-zinc-700 rounded-3xl pl-1 pr-5 py-1">
-                    <div class="w-8 h-8 bg-zinc-700 rounded-2xl flex items-center justify-center text-xs font-bold">
-                        {{ current_user.username[0].upper() }}
-                    </div>
-                    <span class="text-sm font-medium">{{ current_user.username }}</span>
-                </div>
-
-                <a href="{{ url_for('logout') }}" class="text-sm px-4 py-2 text-zinc-400 hover:text-white">Выйти</a>
+                <a href="{{ url_for('history') }}" class="px-3 py-1.5 text-xs text-zinc-400 hover:text-white rounded-xl border border-zinc-800 hover:border-zinc-600" title="История">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </a>
+                <a href="{{ url_for('profile', username=current_user.username) }}" class="w-8 h-8 bg-violet-700 rounded-xl flex items-center justify-center text-xs font-bold hover:bg-violet-600">
+                    {{ current_user.username[0].upper() }}
+                </a>
+                <a href="{{ url_for('logout') }}" class="text-xs text-zinc-600 hover:text-white hidden sm:block">Выйти</a>
             {% else %}
-                <!-- Гость -->
-                <a href="{{ url_for('login') }}" class="px-5 py-2 text-sm font-medium hover:bg-zinc-900 rounded-2xl border border-zinc-700">Войти</a>
-                <a href="{{ url_for('register') }}" class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100">Регистрация</a>
+                <a href="{{ url_for('login') }}" class="px-3 py-1.5 text-sm hover:bg-zinc-900 rounded-xl border border-zinc-700">Войти</a>
+                <a href="{{ url_for('register') }}" class="px-3 py-1.5 bg-white text-black text-sm font-semibold rounded-xl hover:bg-zinc-100">Рег.</a>
             {% endif %}
         </div>
     </div>
 </nav>
 
-    <div class="max-w-screen-2xl mx-auto px-8 pt-8 pb-12">
-        <!-- Заголовок видео -->
-        <div class="mb-6">
-            <h1 class="text-4xl font-semibold tracking-tighter">{{ video.title }}</h1>
-            <div class="flex items-center gap-x-4 text-zinc-400 mt-2 text-sm">
-                <span>{{ video.year }}</span>
-                <span>•</span>
-                <span>{{ video.duration }}</span>
-            </div>
-        </div>
+<div class="max-w-screen-xl mx-auto px-3 sm:px-6 lg:px-8 pt-5 pb-12">
 
-        <!-- Плеер -->
-        <div class="bg-black rounded-3xl overflow-hidden border border-zinc-800 shadow-2xl">
-            <div class="player-container" id="player-container">
-                <!-- Предпросмотр/Loading индикатор -->
-                <div id="preview-overlay" class="absolute inset-0 bg-black/60 flex items-center justify-center z-10 transition-opacity">
-                    <div class="text-center">
-                        <div class="w-16 h-16 border-4 border-zinc-700 border-t-white rounded-full animate-spin mb-4"></div>
-                        <p class="text-white text-sm">Загрузка видео...</p>
-                    </div>
-                </div>
-                
-                <video id="video-player" 
-                       class="w-full bg-black" 
-                       style="aspect-ratio: {% if video.format == 'vertical' %}9/16{% else %}16/9{% endif %}"
-                       poster="../{{ video.thumbnail }}"
-                       playsinline
-                       preload="metadata">
-                </video>
-
-                <!-- Кастомные элементы управления -->
-                <div class="custom-player-controls" id="player-controls">
-                    <!-- Progress Bar -->
-                    <div class="progress-bar-container" id="progress-container">
-                        <div class="progress-bar" id="progress-bar"></div>
-                        <div class="progress-hover" id="progress-hover"></div>
-                    </div>
-
-                    <!-- Controls Row -->
-                    <div class="controls-row">
-                        <!-- Play/Pause -->
-                        <button class="control-btn" id="play-btn" title="Воспроизвести">
-                            <i class="fa-solid fa-play"></i>
-                        </button>
-
-                        <!-- Volume -->
-                        <div class="volume-control">
-                            <button class="control-btn" id="volume-btn" title="Громкость">
-                                <i class="fa-solid fa-volume-high"></i>
-                            </button>
-                            <input type="range" class="volume-slider" id="volume-slider" min="0" max="100" value="100">
-                        </div>
-
-                        <!-- Time Display -->
-                        <div class="time-display">
-                            <span id="current-time">0:00</span> / <span id="duration">0:00</span>
-                        </div>
-
-                        <!-- Spacer -->
-                        <div class="spacer"></div>
-
-                        <!-- Speed Menu -->
-                        <div style="position: relative;">
-                            <button class="control-btn" id="speed-btn" title="Скорость">
-                                <span style="font-size: 12px; font-weight: 600;">1x</span>
-                            </button>
-                            <div class="speed-menu" id="speed-menu">
-                                <button class="menu-item" data-speed="0.5">0.5x</button>
-                                <button class="menu-item" data-speed="0.75">0.75x</button>
-                                <button class="menu-item active" data-speed="1">1x</button>
-                                <button class="menu-item" data-speed="1.25">1.25x</button>
-                                <button class="menu-item" data-speed="1.5">1.5x</button>
-                                <button class="menu-item" data-speed="2">2x</button>
-                            </div>
-                        </div>
-
-                        <!-- Quality Menu -->
-                        <div style="position: relative;">
-                            <button class="control-btn" id="quality-btn" title="Качество">
-                                <i class="fa-solid fa-cog"></i>
-                            </button>
-                            <div class="quality-menu" id="quality-menu">
-                                <!-- Генерируется JavaScript -->
-                            </div>
-                        </div>
-
-                        <!-- Fullscreen -->
-                        <button class="control-btn" id="fullscreen-btn" title="Полный экран">
-                            <i class="fa-solid fa-expand"></i>
-                        </button>
-                    </div>
+    <!-- ===== Плеер ===== -->
+    <div class="player-wrapper shadow-2xl border border-zinc-800 mb-5">
+        <div class="player-container" id="player-container">
+            <!-- Loading / Preview overlay -->
+            <div id="preview-overlay" class="absolute inset-0 bg-black/70 flex items-center justify-center z-10 transition-opacity duration-200" style="pointer-events:none">
+                <div class="flex flex-col items-center gap-3">
+                    <div class="w-14 h-14 border-3 border-zinc-700 border-t-violet-500 rounded-full animate-spin" style="border-width:3px"></div>
+                    <p class="text-white/60 text-sm">Загрузка...</p>
                 </div>
             </div>
-        </div>
 
-        <!-- Описание -->
-        <div class="mt-8 max-w-3xl">
-            <h4 class="font-semibold mb-2">Описание</h4>
-            <p class="text-zinc-400">{{ video.description }}</p>
+            <video id="video-player"
+                   poster="{{ thumbnail_url }}"
+                   playsinline
+                   preload="metadata">
+            </video>
+
+            <!-- Контролы -->
+            <div class="custom-player-controls" id="player-controls">
+                <div class="progress-bar-container" id="progress-container">
+                    <div class="progress-bar" id="progress-bar"></div>
+                    <div class="progress-hover" id="progress-hover"></div>
+                </div>
+                <div class="controls-row">
+                    <button class="control-btn" id="play-btn" title="Воспроизвести">
+                        <i class="fa-solid fa-play"></i>
+                    </button>
+                    <div class="volume-control">
+                        <button class="control-btn" id="volume-btn" title="Громкость">
+                            <i class="fa-solid fa-volume-high"></i>
+                        </button>
+                        <input type="range" class="volume-slider" id="volume-slider" min="0" max="100" value="70">
+                    </div>
+                    <div class="time-display">
+                        <span id="current-time">0:00</span> / <span id="duration">0:00</span>
+                    </div>
+                    <div class="spacer"></div>
+                    <!-- Скорость -->
+                    <div style="position:relative">
+                        <button class="control-btn" id="speed-btn" title="Скорость">
+                            <span style="font-size:11px;font-weight:700">1x</span>
+                        </button>
+                        <div class="speed-menu" id="speed-menu">
+                            <button class="menu-item" data-speed="0.25">0.25x</button>
+                            <button class="menu-item" data-speed="0.5">0.5x</button>
+                            <button class="menu-item" data-speed="0.75">0.75x</button>
+                            <button class="menu-item active" data-speed="1">1x</button>
+                            <button class="menu-item" data-speed="1.25">1.25x</button>
+                            <button class="menu-item" data-speed="1.5">1.5x</button>
+                            <button class="menu-item" data-speed="2">2x</button>
+                        </div>
+                    </div>
+                    <!-- Качество -->
+                    <div style="position:relative">
+                        <button class="control-btn" id="quality-btn" title="Качество">
+                            <i class="fa-solid fa-sliders text-sm"></i>
+                        </button>
+                        <div class="quality-menu" id="quality-menu"></div>
+                    </div>
+                    <!-- Полный экран -->
+                    <button class="control-btn" id="fullscreen-btn" title="Полный экран">
+                        <i class="fa-solid fa-expand"></i>
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <script>
-        // ==================== DOM Elements ====================
-        const video = document.getElementById('video-player');
-        const playerContainer = document.getElementById('player-container');
-        const playerControls = document.getElementById('player-controls');
-        const previewOverlay = document.getElementById('preview-overlay');
-        
-        // Controls
-        const playBtn = document.getElementById('play-btn');
-        const progressContainer = document.getElementById('progress-container');
-        const progressBar = document.getElementById('progress-bar');
-        const progressHover = document.getElementById('progress-hover');
-        const currentTimeDisplay = document.getElementById('current-time');
-        const durationDisplay = document.getElementById('duration');
-        const volumeBtn = document.getElementById('volume-btn');
-        const volumeSlider = document.getElementById('volume-slider');
-        const speedBtn = document.getElementById('speed-btn');
-        const speedMenu = document.getElementById('speed-menu');
-        const qualityBtn = document.getElementById('quality-btn');
-        const qualityMenu = document.getElementById('quality-menu');
-        const fullscreenBtn = document.getElementById('fullscreen-btn');
-        
-        // Данные из Python
-        const VIDEO_ID = "{{ video_id }}";
-        const AVAILABLE_QUALITIES = {{ video.qualities | tojson }};
+    <!-- ===== Инфо о видео ===== -->
+    <div class="mb-6">
+        <h1 class="text-2xl sm:text-3xl font-semibold tracking-tight leading-snug">{{ video.title }}</h1>
+        <div class="flex flex-wrap items-center gap-x-4 gap-y-1 text-zinc-500 text-sm mt-2">
+            {% if owner %}
+            <a href="/profile/{{ owner.username }}" class="flex items-center gap-1 hover:text-violet-400 transition-colors">
+                <div class="w-5 h-5 bg-violet-700 rounded-md flex items-center justify-center text-xs font-bold text-white">{{ owner.username[0].upper() }}</div>
+                {{ owner.username }}
+            </a>
+            <span>•</span>
+            {% endif %}
+            <span><i class="fa-solid fa-eye mr-1"></i>{{ video.views_fmt }} просмотров</span>
+            <span>•</span>
+            <span>{{ video.year }}</span>
+            {% if video.qualities %}
+            <span>•</span>
+            <div class="flex gap-1 flex-wrap">
+                {% for q in video.qualities %}
+                <span class="text-xs bg-zinc-800 border border-zinc-700 px-2 py-0.5 rounded-full">{{ q }}</span>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% if video.description %}
+        <div class="mt-4 bg-zinc-900 border border-zinc-800 rounded-2xl p-4 text-zinc-300 text-sm leading-relaxed max-w-3xl">
+            {{ video.description }}
+        </div>
+        {% endif %}
+    </div>
 
-        // ==================== State ====================
-        let isPlaying = false;
-        let currentQuality = null;
-        let controlsHideTimeout = null;
+    <!-- ===== Комментарии ===== -->
+    <div id="comments" class="max-w-3xl">
+        <h2 class="text-lg font-semibold mb-4 flex items-center gap-2">
+            <i class="fa-solid fa-comments text-violet-500"></i>
+            Комментарии
+            <span class="text-zinc-500 text-sm font-normal">({{ comments|length }})</span>
+        </h2>
 
-        // ==================== Utilities ====================
-        function formatTime(seconds) {
-            if (!isFinite(seconds)) return '0:00';
-            const hours = Math.floor(seconds / 3600);
-            const minutes = Math.floor((seconds % 3600) / 60);
-            const secs = Math.floor(seconds % 60);
-            
-            if (hours > 0) {
-                return `${hours}:${String(minutes).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-            }
-            return `${minutes}:${String(secs).padStart(2, '0')}`;
-        }
-
-        function hideControls() {
-            if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
-            if (!isPlaying) return;
-            
-            controlsHideTimeout = setTimeout(() => {
-                playerControls.classList.remove('active');
-            }, 3000);
-        }
-
-        // ==================== Quality Selection ====================
-        function getBestQuality() {
-            const savedQuality = localStorage.getItem('lastQuality_' + VIDEO_ID);
-            if (savedQuality && AVAILABLE_QUALITIES.includes(savedQuality)) {
-                return savedQuality;
-            }
-            return AVAILABLE_QUALITIES[0] || '720p';
-        }
-
-        function updateQualityMenu() {
-            qualityMenu.innerHTML = '';
-            AVAILABLE_QUALITIES.forEach(quality => {
-                const item = document.createElement('button');
-                item.className = `menu-item ${quality === currentQuality ? 'active' : ''}`;
-                item.textContent = quality;
-                item.dataset.quality = quality;
-                item.onclick = () => switchQuality(quality);
-                qualityMenu.appendChild(item);
-            });
-        }
-
-        function switchQuality(newQuality) {
-            if (newQuality === currentQuality) return;
-
-            const currentTime = video.currentTime;
-            const wasPlaying = !video.paused && !video.ended;
-
-            currentQuality = newQuality;
-            localStorage.setItem('lastQuality_' + VIDEO_ID, newQuality);
-
-            previewOverlay.style.opacity = '1';
-            previewOverlay.style.pointerEvents = 'auto';
-
-            video.src = `/video/${VIDEO_ID}/${newQuality}`;
-            video.load();
-
-            const restore = () => {
-                video.currentTime = currentTime;
-                if (wasPlaying) video.play().catch(() => {});
-                video.removeEventListener('canplay', restore);
-            };
-
-            video.addEventListener('canplay', restore, { once: true });
-            updateQualityMenu();
-            qualityMenu.classList.remove('active');
-        }
-
-        // ==================== Play/Pause ====================
-        function togglePlay() {
-            if (video.paused) {
-                video.play();
-            } else {
-                video.pause();
-            }
-        }
-
-        // ==================== Progress Bar ====================
-        function updateProgress() {
-            const percent = (video.currentTime / video.duration) * 100;
-            progressBar.style.width = percent + '%';
-            currentTimeDisplay.textContent = formatTime(video.currentTime);
-        }
-
-        function seekTo(e) {
-            const rect = progressContainer.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const percent = x / rect.width;
-            video.currentTime = percent * video.duration;
-        }
-
-        progressContainer.addEventListener('click', seekTo);
-        progressContainer.addEventListener('mousemove', (e) => {
-            const rect = progressContainer.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const percent = (x / rect.width) * 100;
-            progressHover.style.width = percent + '%';
-        });
-
-        // ==================== Volume ====================
-        function updateVolume() {
-            const volume = volumeSlider.value / 100;
-            video.volume = volume;
-            
-            if (volume === 0) {
-                volumeBtn.innerHTML = '<i class="fa-solid fa-volume-xmark"></i>';
-            } else if (volume < 0.5) {
-                volumeBtn.innerHTML = '<i class="fa-solid fa-volume-low"></i>';
-            } else {
-                volumeBtn.innerHTML = '<i class="fa-solid fa-volume-high"></i>';
-            }
-        }
-
-        volumeSlider.addEventListener('input', updateVolume);
-        volumeSlider.addEventListener('click', (e) => e.stopPropagation());
-        
-        // Регулировка громкости колесиком мыши
-        volumeSlider.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const currentVolume = parseInt(volumeSlider.value);
-            if (e.deltaY < 0) {
-                volumeSlider.value = Math.min(100, currentVolume + 5);
-            } else {
-                volumeSlider.value = Math.max(0, currentVolume - 5);
-            }
-            updateVolume();
-        });
-        
-        volumeBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (volumeSlider.value > 0) {
-                volumeSlider.value = 0;
-            } else {
-                volumeSlider.value = 100;
-            }
-            updateVolume();
-        });
-
-        // ==================== Speed Control ====================
-        speedBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            speedMenu.classList.toggle('active');
-            qualityMenu.classList.remove('active');
-        });
-
-        speedMenu.querySelectorAll('.menu-item').forEach(item => {
-            item.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const speed = parseFloat(e.target.dataset.speed);
-                video.playbackRate = speed;
-                
-                speedMenu.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
-                e.target.classList.add('active');
-                speedBtn.innerHTML = `<span style="font-size: 12px; font-weight: 600;">${speed}x</span>`;
-                speedMenu.classList.remove('active');
-            });
-        });
-
-        // ==================== Quality Control ====================
-        qualityBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            qualityMenu.classList.toggle('active');
-            speedMenu.classList.remove('active');
-        });
-
-        // ==================== Fullscreen ====================
-        fullscreenBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (!document.fullscreenElement) {
-                playerContainer.requestFullscreen().catch(err => {
-                    console.log('Ошибка полноэкрана:', err);
-                });
-                fullscreenBtn.innerHTML = '<i class="fa-solid fa-compress"></i>';
-            } else {
-                document.exitFullscreen();
-                fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
-            }
-        });
-
-        // ==================== Play Button UI ====================
-        playBtn.addEventListener('click', (e) => {
-            e.stopPropagation();
-            togglePlay();
-        });
-        
-        // Клик по видео для воспроизведения/паузы
-        playerContainer.addEventListener('click', (e) => {
-            // Не реагируем на клики по элементам управления плеера
-            if (e.target.closest('.custom-player-controls')) return;
-            // Также не реагируем на клики по видео при открытых меню
-            if (speedMenu.classList.contains('active') || qualityMenu.classList.contains('active')) return;
-            
-            togglePlay();
-        });
-        
-        video.addEventListener('play', () => {
-            isPlaying = true;
-            playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
-            playerControls.classList.add('active');
-            hideControls();
-        });
-
-        video.addEventListener('pause', () => {
-            isPlaying = false;
-            playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
-            playerControls.classList.add('active');
-            if (controlsHideTimeout) clearTimeout(controlsHideTimeout);
-            playerControls.classList.add('active');
-        });
-
-        // ==================== Time Display ====================
-        video.addEventListener('loadedmetadata', () => {
-            durationDisplay.textContent = formatTime(video.duration);
-        });
-
-        video.addEventListener('timeupdate', updateProgress);
-
-        // ==================== Controls Show/Hide ====================
-        playerContainer.addEventListener('mousemove', () => {
-            playerControls.classList.add('active');
-            hideControls();
-        });
-
-        playerContainer.addEventListener('mouseleave', () => {
-            if (isPlaying) {
-                playerControls.classList.remove('active');
-            }
-        });
-
-        // Hide controls on click outside menus
-        document.addEventListener('click', (e) => {
-            if (!speedBtn.contains(e.target) && !speedMenu.contains(e.target)) {
-                speedMenu.classList.remove('active');
-            }
-            if (!qualityBtn.contains(e.target) && !qualityMenu.contains(e.target)) {
-                qualityMenu.classList.remove('active');
-            }
-            
-            // Показываем контролы при клике на видео
-            if (playerContainer.contains(e.target)) {
-                playerControls.classList.add('active');
-                hideControls();
-            }
-        });
-
-        // ==================== Preview Overlay ====================
-        video.addEventListener('play', () => {
-            previewOverlay.style.opacity = '0';
-            previewOverlay.style.pointerEvents = 'none';
-        });
-
-        // ==================== Error Handling ====================
-        let errorRetryCount = 0;
-        video.addEventListener('error', () => {
-            errorRetryCount++;
-            
-            if (errorRetryCount === 1 && currentQuality !== AVAILABLE_QUALITIES[0]) {
-                console.warn(`Качество ${currentQuality} недоступно, переключаемся на ${AVAILABLE_QUALITIES[0]}`);
-                switchQuality(AVAILABLE_QUALITIES[0]);
-                return;
-            }
-            
-            previewOverlay.innerHTML = `
-                <div class="text-center p-8">
-                    <i class="fa-solid fa-exclamation-triangle text-4xl text-red-400 mb-4"></i>
-                    <p class="font-semibold text-white">Видео не найдено</p>
-                    <p class="text-zinc-400 text-sm mt-2">
-                        Не удалось загрузить видео. Проверьте, что файлы находятся в папке videos/
-                    </p>
-                </div>
-            `;
-        });
-
-        // ==================== Keyboard Controls ====================
-        document.addEventListener('keydown', (e) => {
-            // Не обрабатываем события, если фокус на input элементе
-            if (e.target.matches('input, textarea')) return;
-            
-            switch(e.code) {
-                case 'Space':
-                    e.preventDefault();
-                    togglePlay();
-                    break;
-                    
-                case 'ArrowLeft':
-                    e.preventDefault();
-                    video.currentTime = Math.max(0, video.currentTime - 5);
-                    break;
-                    
-                case 'ArrowRight':
-                    e.preventDefault();
-                    video.currentTime = Math.min(video.duration, video.currentTime + 5);
-                    break;
-                    
-                case 'ArrowUp':
-                    e.preventDefault();
-                    volumeSlider.value = Math.min(100, parseInt(volumeSlider.value) + 10);
-                    updateVolume();
-                    break;
-                    
-                case 'ArrowDown':
-                    e.preventDefault();
-                    volumeSlider.value = Math.max(0, parseInt(volumeSlider.value) - 10);
-                    updateVolume();
-                    break;
-                    
-                case 'KeyF':
-                    e.preventDefault();
-                    fullscreenBtn.click();
-                    break;
-                    
-                case 'KeyM':
-                    e.preventDefault();
-                    volumeBtn.click();
-                    break;
-            }
-        });
-
-        // ==================== Initialize ====================
-        function initPlayer() {
-            currentQuality = getBestQuality();
-            video.src = `/video/${VIDEO_ID}/${currentQuality}`;
-            video.volume = 0.5;
-            volumeSlider.value = 50;
-            updateVolume();
-            updateQualityMenu();
-            
-            // Показываем превью покуда видео не запущено
-            previewOverlay.style.opacity = '1';
-            previewOverlay.style.pointerEvents = 'auto';
-            previewOverlay.innerHTML = `
-                <div class="flex flex-col items-center justify-center gap-4">
-                    <div class="w-20 h-20 bg-emerald-500/20 rounded-full flex items-center justify-center">
-                        <i class="fa-solid fa-play text-4xl text-emerald-400"></i>
+        <!-- Форма добавления -->
+        {% if current_user.is_authenticated %}
+        <form method="post" action="/comment/{{ video_id }}" class="mb-6">
+            <div class="flex gap-3 items-start">
+                <div class="comment-avatar shrink-0">{{ current_user.username[0].upper() }}</div>
+                <div class="flex-1">
+                    <textarea
+                        name="text"
+                        rows="2"
+                        placeholder="Написать комментарий..."
+                        maxlength="1000"
+                        class="w-full bg-zinc-900 border border-zinc-700 rounded-xl px-4 py-3 text-sm text-white placeholder-zinc-500 resize-none focus:outline-none focus:border-violet-600 transition-colors"
+                        id="comment-textarea"
+                    ></textarea>
+                    <div class="flex justify-between items-center mt-2">
+                        <span class="text-xs text-zinc-600" id="char-count">0 / 1000</span>
+                        <button type="submit"
+                            class="px-4 py-1.5 bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold rounded-xl transition-colors">
+                            Отправить
+                        </button>
                     </div>
-                    <p class="text-white text-sm font-medium">Нажмите play для начала</p>
                 </div>
-            `;
-        }
+            </div>
+        </form>
+        {% else %}
+        <div class="mb-6 p-4 bg-zinc-900 border border-zinc-800 rounded-2xl text-sm text-zinc-400 flex items-center gap-3">
+            <i class="fa-solid fa-lock text-zinc-600"></i>
+            <span><a href="{{ url_for('login') }}" class="text-violet-400 hover:underline">Войдите</a>, чтобы оставить комментарий</span>
+        </div>
+        {% endif %}
 
-        window.onload = initPlayer;
-    </script>
+        <!-- Список комментариев -->
+        {% if comments %}
+        <div class="flex flex-col gap-3">
+            {% for comment in comments %}
+            <div class="comment-card">
+                <div class="flex gap-3 items-start">
+                    <div class="comment-avatar">{{ comment.username[0].upper() }}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1">
+                            <span class="text-sm font-semibold text-white">{{ comment.username }}</span>
+                            <span class="text-xs text-zinc-600">{{ comment.created_at[:16].replace('T', ' ') }}</span>
+                        </div>
+                        <p class="text-sm text-zinc-300 break-words whitespace-pre-wrap">{{ comment.text }}</p>
+                    </div>
+                    {% if current_user.is_authenticated and current_user.id == comment.user_id %}
+                    <form method="post" action="/comment/delete/{{ comment.id }}" class="shrink-0">
+                        <button type="submit" class="text-zinc-600 hover:text-red-400 text-xs transition-colors p-1" title="Удалить">
+                            <i class="fa-solid fa-trash-can"></i>
+                        </button>
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="text-center py-10 text-zinc-600">
+            <i class="fa-solid fa-comment-slash text-2xl mb-3 block"></i>
+            <p class="text-sm">Комментариев пока нет</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// ==================== DOM ====================
+const video      = document.getElementById('video-player');
+const playerCont = document.getElementById('player-container');
+const playerCtrl = document.getElementById('player-controls');
+const overlay    = document.getElementById('preview-overlay');
+
+const playBtn        = document.getElementById('play-btn');
+const progressCont   = document.getElementById('progress-container');
+const progressBar    = document.getElementById('progress-bar');
+const progressHover  = document.getElementById('progress-hover');
+const currentTimeTxt = document.getElementById('current-time');
+const durationTxt    = document.getElementById('duration');
+const volumeBtn      = document.getElementById('volume-btn');
+const volumeSlider   = document.getElementById('volume-slider');
+const speedBtn       = document.getElementById('speed-btn');
+const speedMenu      = document.getElementById('speed-menu');
+const qualityBtn     = document.getElementById('quality-btn');
+const qualityMenu    = document.getElementById('quality-menu');
+const fullscreenBtn  = document.getElementById('fullscreen-btn');
+
+const VIDEO_ID          = "{{ video_id }}";
+const AVAILABLE_QUALITIES = {{ video.qualities | tojson }};
+const IS_MOBILE = /Mobi|Android|iPhone/i.test(navigator.userAgent) || window.innerWidth <= 768;
+
+let isPlaying = false;
+let currentQuality = null;
+let hideTimeout = null;
+let viewTracked = false;
+
+// ==================== Утилиты ====================
+function fmt(s) {
+    if (!isFinite(s) || s < 0) return '0:00';
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = Math.floor(s % 60);
+    return h > 0
+        ? `${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`
+        : `${m}:${String(sec).padStart(2,'0')}`;
+}
+
+// ==================== Качество ====================
+function getBestQuality() {
+    const saved = localStorage.getItem('preferredQuality');
+    if (saved && AVAILABLE_QUALITIES.includes(saved)) return saved;
+    // Авто-выбор по ширине экрана
+    const w = window.innerWidth;
+    if (w <= 480 && AVAILABLE_QUALITIES.includes('480p')) return '480p';
+    if (w <= 720 && AVAILABLE_QUALITIES.includes('720p')) return '720p';
+    return AVAILABLE_QUALITIES[0] || '720p';
+}
+
+function buildQualityMenu() {
+    qualityMenu.innerHTML = '';
+    AVAILABLE_QUALITIES.forEach(q => {
+        const btn = document.createElement('button');
+        btn.className = 'menu-item' + (q === currentQuality ? ' active' : '');
+        btn.textContent = q;
+        btn.onclick = () => switchQuality(q);
+        qualityMenu.appendChild(btn);
+    });
+}
+
+function switchQuality(q) {
+    if (q === currentQuality) { qualityMenu.classList.remove('active'); return; }
+    const t = video.currentTime;
+    const wasPlaying = !video.paused;
+    currentQuality = q;
+    localStorage.setItem('preferredQuality', q);
+    showOverlay(true);
+    video.src = `/video/${VIDEO_ID}/${q}`;
+    video.load();
+    video.addEventListener('canplay', () => {
+        video.currentTime = t;
+        if (wasPlaying) video.play().catch(() => {});
+    }, { once: true });
+    buildQualityMenu();
+    qualityMenu.classList.remove('active');
+}
+
+// ==================== Play/Pause ====================
+function togglePlay() {
+    video.paused ? video.play().catch(() => {}) : video.pause();
+}
+
+function showOverlay(on) {
+    overlay.style.opacity = on ? '1' : '0';
+    // pointer-events всегда none — overlay никогда не перехватывает клики
+    overlay.style.pointerEvents = 'none';
+}
+
+// ==================== Progress ====================
+function updateProgress() {
+    if (!video.duration) return;
+    const pct = (video.currentTime / video.duration) * 100;
+    progressBar.style.width = pct + '%';
+    currentTimeTxt.textContent = fmt(video.currentTime);
+
+    // Трекинг просмотра (>30% = считается)
+    if (!viewTracked && pct > 30) {
+        viewTracked = true;
+    }
+}
+
+let seeking = false;
+function seek(e) {
+    const rect = progressCont.getBoundingClientRect();
+    const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+    const pct = Math.max(0, Math.min(1, x / rect.width));
+    video.currentTime = pct * video.duration;
+}
+progressCont.addEventListener('click', seek);
+progressCont.addEventListener('mousedown', () => { seeking = true; });
+document.addEventListener('mousemove', e => { if (seeking) seek(e); });
+document.addEventListener('mouseup', () => { seeking = false; });
+
+// Touch seek
+progressCont.addEventListener('touchmove', e => { e.preventDefault(); seek(e); }, { passive: false });
+progressCont.addEventListener('mousemove', e => {
+    const rect = progressCont.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    progressHover.style.width = Math.max(0, Math.min(100, (x / rect.width) * 100)) + '%';
+});
+
+// ==================== Громкость ====================
+function updateVolumeUI() {
+    const v = parseFloat(volumeSlider.value) / 100;
+    video.volume = v;
+    video.muted = v === 0;
+    volumeBtn.innerHTML = v === 0 ? '<i class="fa-solid fa-volume-xmark"></i>'
+        : v < 0.5 ? '<i class="fa-solid fa-volume-low"></i>'
+        : '<i class="fa-solid fa-volume-high"></i>';
+}
+
+volumeSlider.addEventListener('input', updateVolumeUI);
+volumeSlider.addEventListener('click', e => e.stopPropagation());
+volumeBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    volumeSlider.value = volumeSlider.value > 0 ? 0 : 70;
+    updateVolumeUI();
+});
+volumeSlider.addEventListener('wheel', e => {
+    e.preventDefault();
+    volumeSlider.value = Math.max(0, Math.min(100, +volumeSlider.value + (e.deltaY < 0 ? 5 : -5)));
+    updateVolumeUI();
+}, { passive: false });
+
+// ==================== Управление показом контролов ====================
+function showControls() {
+    playerCtrl.classList.add('active');
+    if (hideTimeout) clearTimeout(hideTimeout);
+    if (isPlaying) {
+        hideTimeout = setTimeout(() => {
+            if (!speedMenu.classList.contains('active') && !qualityMenu.classList.contains('active')) {
+                playerCtrl.classList.remove('active');
+            }
+        }, 3000);
+    }
+}
+
+// Desktop
+playerCont.addEventListener('mousemove', showControls);
+playerCont.addEventListener('mouseleave', () => {
+    if (isPlaying) playerCtrl.classList.remove('active');
+});
+
+// Mobile: тап по плееру показывает/скрывает контролы
+if (IS_MOBILE) {
+    let tapTimeout = null;
+    playerCont.addEventListener('touchstart', e => {
+        if (e.target.closest('.custom-player-controls')) return;
+        if (playerCtrl.classList.contains('active')) {
+            playerCtrl.classList.remove('active');
+        } else {
+            playerCtrl.classList.add('active');
+            clearTimeout(tapTimeout);
+            tapTimeout = setTimeout(() => playerCtrl.classList.remove('active'), 3000);
+        }
+    });
+}
+
+// ==================== События видео ====================
+video.addEventListener('play', () => {
+    isPlaying = true;
+    playBtn.innerHTML = '<i class="fa-solid fa-pause"></i>';
+    showOverlay(false);
+    showControls();
+});
+video.addEventListener('pause', () => {
+    isPlaying = false;
+    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+    showControls();
+});
+video.addEventListener('waiting', () => showOverlay(true));
+video.addEventListener('playing', () => showOverlay(false));
+video.addEventListener('timeupdate', updateProgress);
+video.addEventListener('ended', () => {
+    isPlaying = false;
+    playBtn.innerHTML = '<i class="fa-solid fa-play"></i>';
+    showControls();
+});
+
+// ==================== Клики по плееру ====================
+playBtn.addEventListener('click', e => { e.stopPropagation(); togglePlay(); });
+
+playerCont.addEventListener('click', e => {
+    if (e.target.closest('.custom-player-controls')) return;
+    if (speedMenu.classList.contains('active') || qualityMenu.classList.contains('active')) {
+        speedMenu.classList.remove('active');
+        qualityMenu.classList.remove('active');
+        return;
+    }
+    if (!IS_MOBILE) togglePlay();
+});
+
+// Double tap fullscreen on mobile
+if (IS_MOBILE) {
+    let lastTap = 0;
+    playerCont.addEventListener('touchend', e => {
+        if (e.target.closest('.custom-player-controls')) return;
+        const now = Date.now();
+        if (now - lastTap < 300) {
+            togglePlay();
+        }
+        lastTap = now;
+    });
+}
+
+// ==================== Скорость ====================
+speedBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    speedMenu.classList.toggle('active');
+    qualityMenu.classList.remove('active');
+});
+speedMenu.querySelectorAll('.menu-item').forEach(item => {
+    item.addEventListener('click', e => {
+        e.stopPropagation();
+        const speed = parseFloat(item.dataset.speed);
+        video.playbackRate = speed;
+        speedMenu.querySelectorAll('.menu-item').forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        speedBtn.innerHTML = `<span style="font-size:11px;font-weight:700">${speed}x</span>`;
+        speedMenu.classList.remove('active');
+    });
+});
+
+// ==================== Качество ====================
+qualityBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    qualityMenu.classList.toggle('active');
+    speedMenu.classList.remove('active');
+});
+
+// ==================== Полный экран ====================
+fullscreenBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    if (!document.fullscreenElement) {
+        playerCont.requestFullscreen().catch(() => {});
+        fullscreenBtn.innerHTML = '<i class="fa-solid fa-compress"></i>';
+    } else {
+        document.exitFullscreen();
+        fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
+    }
+});
+document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+        fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
+    }
+});
+
+// Закрытие меню при клике вне
+document.addEventListener('click', e => {
+    if (!speedBtn.contains(e.target) && !speedMenu.contains(e.target)) speedMenu.classList.remove('active');
+    if (!qualityBtn.contains(e.target) && !qualityMenu.contains(e.target)) qualityMenu.classList.remove('active');
+});
+
+// ==================== Ошибки ====================
+let retryCount = 0;
+video.addEventListener('error', () => {
+    retryCount++;
+    if (retryCount === 1 && currentQuality !== AVAILABLE_QUALITIES[0]) {
+        switchQuality(AVAILABLE_QUALITIES[0]);
+        return;
+    }
+    overlay.innerHTML = `
+        <div class="text-center px-6">
+            <i class="fa-solid fa-circle-exclamation text-3xl text-red-400 mb-3 block"></i>
+            <p class="font-medium text-white">Не удалось загрузить видео</p>
+            <p class="text-zinc-500 text-sm mt-1">Проверьте наличие файлов в папке videos/</p>
+        </div>`;
+    showOverlay(true);
+});
+
+// ==================== Клавиатура ====================
+document.addEventListener('keydown', e => {
+    if (e.target.matches('input, textarea, select')) return;
+    switch (e.code) {
+        case 'Space': e.preventDefault(); togglePlay(); break;
+        case 'ArrowLeft': e.preventDefault(); video.currentTime = Math.max(0, video.currentTime - 5); break;
+        case 'ArrowRight': e.preventDefault(); video.currentTime = Math.min(video.duration, video.currentTime + 5); break;
+        case 'ArrowUp': e.preventDefault(); volumeSlider.value = Math.min(100, +volumeSlider.value + 10); updateVolumeUI(); break;
+        case 'ArrowDown': e.preventDefault(); volumeSlider.value = Math.max(0, +volumeSlider.value - 10); updateVolumeUI(); break;
+        case 'KeyF': e.preventDefault(); fullscreenBtn.click(); break;
+        case 'KeyM': e.preventDefault(); volumeBtn.click(); break;
+    }
+});
+
+// ==================== Init ====================
+function setAspectRatio(w, h) {
+    const ratio = w / h;
+    const isVertical = h > w;
+    if (isVertical) {
+        playerCont.classList.add('is-vertical');
+        playerCont.style.aspectRatio = '9/16';
+    } else {
+        playerCont.classList.remove('is-vertical');
+        // Используем реальное соотношение видео, но не уже 16:9 и не выше 90vh
+        playerCont.style.aspectRatio = `${w}/${h}`;
+    }
+}
+
+function initPlayer() {
+    currentQuality = getBestQuality();
+    video.src = `/video/${VIDEO_ID}/${currentQuality}`;
+    video.volume = 0.7;
+    volumeSlider.value = 70;
+    updateVolumeUI();
+    buildQualityMenu();
+
+    // Показываем overlay с кнопкой play (но не блокируем клики)
+    overlay.style.opacity = '1';
+    overlay.innerHTML = `
+        <div class="flex flex-col items-center gap-3 select-none">
+            <div class="w-16 h-16 bg-violet-600/30 rounded-full flex items-center justify-center">
+                <i class="fa-solid fa-play text-3xl text-violet-300 ml-1"></i>
+            </div>
+            <p class="text-white/70 text-sm">Нажмите для воспроизведения</p>
+        </div>`;
+}
+
+// Адаптируем размер плеера под реальные размеры видео
+video.addEventListener('loadedmetadata', () => {
+    durationTxt.textContent = fmt(video.duration);
+    if (video.videoWidth && video.videoHeight) {
+        setAspectRatio(video.videoWidth, video.videoHeight);
+    }
+});
+
+window.addEventListener('load', initPlayer);
+
+// ==================== Счётчик символов ====================
+const textarea = document.getElementById('comment-textarea');
+const charCount = document.getElementById('char-count');
+if (textarea) {
+    textarea.addEventListener('input', () => {
+        charCount.textContent = `${textarea.value.length} / 1000`;
+        charCount.style.color = textarea.value.length > 900 ? '#f87171' : '';
+    });
+}
+</script>
 </body>
 </html>

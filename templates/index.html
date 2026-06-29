@@ -6,81 +6,218 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .thumb-wrap {
+            position: relative;
+            width: 100%;
+            padding-top: 56.25%; /* всегда 16:9 */
+            overflow: hidden;
+            background: #18181b;
+        }
+        .thumb-wrap img {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            transition: transform 0.4s ease;
+        }
+        .group:hover .thumb-wrap img { transform: scale(1.05); }
+        .thumb-wrap .thumb-badge {
+            position: absolute;
+            bottom: 8px;
+            right: 8px;
+            display: flex;
+            gap: 6px;
+        }
+        .badge {
+            background: rgba(0,0,0,0.75);
+            backdrop-filter: blur(4px);
+            color: #fff;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 999px;
+            font-weight: 500;
+        }
+        .badge-violet { background: rgba(139,92,246,0.75); }
+
+        /* Скелетон при загрузке */
+        .thumb-wrap img[src=""] { opacity: 0; }
+
+        /* Поиск */
+        #search-input:focus { outline: none; box-shadow: 0 0 0 2px rgba(139,92,246,0.5); }
+
+        /* Поиск — индикатор загрузки */
+        #search-input.loading { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2'%3E%3Cpath d='M21 12a9 9 0 1 1-6.219-8.56'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238b5cf6' stroke-width='2'%3E%3Cpath d='M21 12a9 9 0 1 1-6.219-8.56'/%3E%3C/svg%3E"); } }
+
+        /* Мобильная сетка */
+        @media (max-width: 640px) {
+            .video-grid { grid-template-columns: repeat(1, minmax(0, 1fr)) !important; }
+            .px-nav { padding-left: 1rem !important; padding-right: 1rem !important; }
+        }
+    </style>
 </head>
-<body class="bg-zinc-950 text-white">
-    <nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
-    <div class="max-w-screen-2xl mx-auto px-8 h-16 flex items-center justify-between">
-        <a href="/" class="flex items-center gap-x-3">
+<body class="bg-zinc-950 text-white min-h-screen">
+
+<!-- Navbar -->
+<nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-screen-2xl mx-auto px-4 sm:px-8 h-16 flex items-center gap-x-4">
+        <a href="/" class="flex items-center gap-x-2 shrink-0">
             <div class="w-9 h-9 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-2xl flex items-center justify-center">
-                <span class="font-bold text-2xl">US</span>
+                <span class="font-bold text-lg">US</span>
             </div>
-            <span class="font-semibold text-3xl tracking-tighter">UltraStream</span>
+            <span class="font-semibold text-xl tracking-tighter hidden sm:block">UltraStream</span>
         </a>
 
-        <div class="flex items-center gap-x-4">
-            {% if current_user.is_authenticated %}
-                <!-- Авторизованный пользователь -->
-                <a href="{{ url_for('upload_page') }}" 
-                   class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100 flex items-center gap-x-2">
-                    <i class="fa-solid fa-upload"></i>
-                    <span>Загрузить видео</span>
-                </a>
+        <!-- Поиск -->
+        <form method="get" action="/" class="flex-1 max-w-xl mx-auto">
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500 text-sm"></i>
+                <input
+                    type="text"
+                    name="q"
+                    id="search-input"
+                    value="{{ query }}"
+                    placeholder="Поиск видео..."
+                    autocomplete="off"
+                    class="w-full bg-zinc-900 border border-zinc-700 rounded-2xl pl-9 pr-4 py-2 text-sm text-white placeholder-zinc-500 transition-all"
+                >
+            </div>
+        </form>
 
-                <div class="flex items-center gap-x-3 bg-zinc-900 border border-zinc-700 rounded-3xl pl-1 pr-5 py-1">
-                    <div class="w-8 h-8 bg-zinc-700 rounded-2xl flex items-center justify-center text-xs font-bold">
+        <div class="flex items-center gap-x-2 sm:gap-x-3 shrink-0">
+            {% if current_user.is_authenticated %}
+                <a href="{{ url_for('upload_page') }}"
+                   class="px-3 sm:px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100 flex items-center gap-x-2">
+                    <i class="fa-solid fa-upload"></i>
+                    <span class="hidden sm:block">Загрузить</span>
+                </a>
+                <a href="{{ url_for('history') }}"
+                   class="px-3 py-2 text-sm text-zinc-400 hover:text-white rounded-2xl hover:bg-zinc-900 border border-zinc-800 flex items-center gap-x-1"
+                   title="История">
+                    <i class="fa-solid fa-clock-rotate-left"></i>
+                </a>
+                <a href="{{ url_for('profile', username=current_user.username) }}"
+                   class="flex items-center gap-x-2 bg-zinc-900 border border-zinc-700 rounded-3xl pl-1 pr-3 py-1">
+                    <div class="w-7 h-7 bg-violet-600 rounded-xl flex items-center justify-center text-xs font-bold">
                         {{ current_user.username[0].upper() }}
                     </div>
-                    <span class="text-sm font-medium">{{ current_user.username }}</span>
-                </div>
-
-                <a href="{{ url_for('logout') }}" class="text-sm px-4 py-2 text-zinc-400 hover:text-white">Выйти</a>
+                    <span class="text-sm font-medium hidden sm:block">{{ current_user.username }}</span>
+                </a>
+                <a href="{{ url_for('logout') }}" class="text-sm text-zinc-500 hover:text-white hidden sm:block">Выйти</a>
             {% else %}
-                <!-- Гость -->
-                <a href="{{ url_for('login') }}" class="px-5 py-2 text-sm font-medium hover:bg-zinc-900 rounded-2xl border border-zinc-700">Войти</a>
-                <a href="{{ url_for('register') }}" class="px-5 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100">Регистрация</a>
+                <a href="{{ url_for('login') }}" class="px-4 py-2 text-sm hover:bg-zinc-900 rounded-2xl border border-zinc-700">Войти</a>
+                <a href="{{ url_for('register') }}" class="px-4 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100">Регистрация</a>
             {% endif %}
         </div>
     </div>
 </nav>
 
-    <div class="max-w-screen-2xl mx-auto px-8 py-10">
-        <h1 class="text-5xl font-semibold tracking-tighter mb-2">Все видео</h1>
-        <p class="text-zinc-400 mb-8">Выберите ролик для просмотра</p>
+<!-- Main -->
+<div class="max-w-screen-2xl mx-auto px-4 sm:px-8 py-8">
 
-        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {% for video_id, video in videos.items() %}
-            <a href="/watch/{{ video_id }}" class="group block">
-                <div class="bg-zinc-900 border border-zinc-800 rounded-3xl overflow-hidden hover:border-zinc-700 transition-all">
-                    <div class="relative">
-                        <img src="{{ video.thumbnail }}" 
-                             class="w-full object-cover group-hover:scale-105 transition-transform duration-500"
-                             style="aspect-ratio: {% if video.format == 'vertical' %}9/16{% else %}16/9{% endif %}">
-                        <div class="absolute bottom-3 right-3 flex items-center gap-2">
-                            <div class="bg-black/70 text-white text-xs px-2.5 py-1 rounded-xl font-medium">
-                                {{ video.duration }}
-                            </div>
-                            {% if video.format == 'vertical' %}
-                            <div class="bg-violet-500/70 text-white text-xs px-2.5 py-1 rounded-xl font-medium flex items-center gap-1">
-                                <i class="fa-solid fa-mobile"></i>
-                                Vertical
-                            </div>
-                            {% endif %}
-                        </div>
+    {% if query %}
+    <div class="mb-6 flex items-center gap-3">
+        <p class="text-zinc-400 text-sm">Результаты поиска: <span class="text-white font-medium">«{{ query }}»</span> — {{ videos|length }} видео</p>
+        <a href="/" class="text-xs text-zinc-500 hover:text-white border border-zinc-700 rounded-xl px-3 py-1">
+            <i class="fa-solid fa-xmark mr-1"></i>Сбросить
+        </a>
+    </div>
+    {% else %}
+    <div class="mb-6">
+        <h1 class="text-3xl sm:text-4xl font-semibold tracking-tighter">Все видео</h1>
+        <p class="text-zinc-500 mt-1 text-sm">{{ videos|length }} видео на платформе</p>
+    </div>
+    {% endif %}
+
+    {% if videos %}
+    <div class="grid video-grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+        {% for video_id, video in videos.items() %}
+        <a href="/watch/{{ video_id }}" class="group block">
+            <div class="bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-600 transition-all duration-200 hover:shadow-xl hover:shadow-black/40">
+                <!-- Превью — всегда 16:9 -->
+                <div class="thumb-wrap rounded-t-2xl">
+                    {% if video.thumbnail %}
+                    <img src="/{{ video.thumbnail }}" alt="{{ video.title }}" loading="lazy">
+                    {% else %}
+                    <div class="absolute inset-0 flex items-center justify-center bg-zinc-800">
+                        <i class="fa-solid fa-film text-3xl text-zinc-600"></i>
                     </div>
-                    <div class="p-5">
-                        <h3 class="font-semibold text-xl tracking-tight">{{ video.title }}</h3>
-                        <p class="text-zinc-400 text-sm mt-1 line-clamp-2">{{ video.description }}</p>
-                        
-                        <div class="flex flex-wrap gap-1.5 mt-4">
-                            {% for q in video.qualities %}
-                                <span class="text-[10px] px-2.5 py-0.5 rounded-full border border-zinc-700 text-zinc-400">{{ q }}</span>
-                            {% endfor %}
-                        </div>
+                    {% endif %}
+                    <div class="thumb-badge">
+                        {% if video.format == 'vertical' %}
+                        <span class="badge badge-violet"><i class="fa-solid fa-mobile-screen mr-1"></i>Вертикальное</span>
+                        {% endif %}
+                        {% if video.qualities %}
+                        <span class="badge">{{ video.qualities[0] }}</span>
+                        {% endif %}
                     </div>
                 </div>
-            </a>
-            {% endfor %}
-        </div>
+                <!-- Инфо -->
+                <div class="p-4">
+                    <h3 class="font-semibold text-base leading-snug line-clamp-2">{{ video.title }}</h3>
+                    <div class="flex items-center gap-2 mt-2 text-xs text-zinc-500">
+                        {% if video.owner %}
+                        <a href="/profile/{{ video.owner }}" class="hover:text-violet-400 transition-colors" onclick="event.stopPropagation()">
+                            <i class="fa-solid fa-user mr-1"></i>{{ video.owner }}
+                        </a>
+                        <span>•</span>
+                        {% endif %}
+                        <span><i class="fa-solid fa-eye mr-1"></i>{{ video.views_fmt }}</span>
+                        <span>•</span>
+                        <span>{{ video.year }}</span>
+                    </div>
+                    {% if video.description %}
+                    <p class="text-zinc-500 text-xs mt-2 line-clamp-2">{{ video.description }}</p>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
     </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="w-20 h-20 bg-zinc-800 rounded-3xl flex items-center justify-center mb-6">
+            <i class="fa-solid fa-film text-3xl text-zinc-600"></i>
+        </div>
+        {% if query %}
+        <p class="text-zinc-400 text-lg font-medium">Ничего не найдено</p>
+        <p class="text-zinc-600 text-sm mt-2">Попробуйте другой запрос</p>
+        {% else %}
+        <p class="text-zinc-400 text-lg font-medium">Видео пока нет</p>
+        {% if current_user.is_authenticated %}
+        <a href="{{ url_for('upload_page') }}" class="mt-4 px-6 py-2 bg-white text-black text-sm font-semibold rounded-2xl hover:bg-zinc-100">
+            Загрузить первое видео
+        </a>
+        {% endif %}
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+(function () {
+    const input = document.getElementById('search-input');
+    if (!input) return;
+
+    let timer = null;
+
+    input.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+            const q = input.value.trim();
+            const url = new URL(window.location.href);
+            if (q) {
+                url.searchParams.set('q', q);
+            } else {
+                url.searchParams.delete('q');
+            }
+            window.location.replace(url.toString());
+        }, 400); // 400ms после последнего символа
+    });
+})();
+</script>
 </body>
 </html>

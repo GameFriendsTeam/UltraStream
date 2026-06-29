@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>История просмотров — UltraStream</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; }
+        .thumb-wrap {
+            position: relative; width: 100%; padding-top: 56.25%;
+            overflow: hidden; background: #18181b; flex-shrink: 0;
+        }
+        .thumb-wrap img {
+            position: absolute; inset: 0;
+            width: 100%; height: 100%; object-fit: cover;
+        }
+    </style>
+</head>
+<body class="bg-zinc-950 text-white min-h-screen">
+<nav class="border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-xl sticky top-0 z-50">
+    <div class="max-w-screen-xl mx-auto px-4 sm:px-8 h-14 flex items-center gap-3">
+        <a href="/" class="flex items-center gap-x-2">
+            <div class="w-8 h-8 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl flex items-center justify-center font-bold text-sm">US</div>
+            <span class="font-semibold tracking-tight hidden sm:block">UltraStream</span>
+        </a>
+        <div class="flex-1"></div>
+        <a href="{{ url_for('profile', username=current_user.username) }}" class="text-sm text-zinc-400 hover:text-white">Профиль</a>
+        <a href="{{ url_for('logout') }}" class="text-sm text-zinc-500 hover:text-white">Выйти</a>
+    </div>
+</nav>
+
+<div class="max-w-screen-xl mx-auto px-4 sm:px-8 py-8">
+    <div class="flex items-center gap-3 mb-6">
+        <i class="fa-solid fa-clock-rotate-left text-violet-500 text-xl"></i>
+        <h1 class="text-2xl font-semibold tracking-tight">История просмотров</h1>
+        <span class="text-zinc-500 text-sm">({{ videos|length }})</span>
+    </div>
+
+    {% if videos %}
+    <div class="flex flex-col gap-3">
+        {% for v in videos %}
+        <a href="/watch/{{ v.video_id }}" class="flex gap-4 bg-zinc-900 border border-zinc-800 rounded-2xl overflow-hidden hover:border-zinc-600 transition-all group">
+            <!-- Превью 16:9 -->
+            <div class="w-40 sm:w-52 shrink-0 relative" style="padding-top: 0">
+                <div style="width:100%; padding-top:56.25%; position:relative; overflow:hidden; background:#18181b;">
+                    {% if v.thumbnail %}
+                    <img src="/{{ v.thumbnail }}" alt="{{ v.title }}"
+                         style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;"
+                         class="group-hover:scale-105 transition-transform duration-300">
+                    {% else %}
+                    <div style="position:absolute;inset:0;" class="flex items-center justify-center bg-zinc-800">
+                        <i class="fa-solid fa-film text-zinc-600 text-2xl"></i>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            <!-- Инфо -->
+            <div class="flex flex-col justify-center py-3 pr-4 min-w-0">
+                <h3 class="font-semibold text-sm sm:text-base line-clamp-2 leading-snug">{{ v.title }}</h3>
+                <p class="text-xs text-zinc-500 mt-1">{{ v.description[:80] }}{% if v.description|length > 80 %}…{% endif %}</p>
+                <div class="flex items-center gap-2 mt-2 text-xs text-zinc-600">
+                    <i class="fa-solid fa-clock"></i>
+                    <span>{{ v.watched_at[:16].replace('T', ' ') }}</span>
+                    {% if v.qualities %}
+                    <span>•</span>
+                    <span>{{ v.qualities[0] }}</span>
+                    {% endif %}
+                </div>
+            </div>
+        </a>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="flex flex-col items-center justify-center py-24 text-center">
+        <div class="w-16 h-16 bg-zinc-800 rounded-3xl flex items-center justify-center mb-4">
+            <i class="fa-solid fa-clock text-2xl text-zinc-600"></i>
+        </div>
+        <p class="text-zinc-400 font-medium">История пуста</p>
+        <a href="/" class="mt-4 text-sm text-violet-400 hover:underline">Смотреть видео</a>
+    </div>
+    {% endif %}
+</div>
+</body>
+</html>

@@ -1,6 +1,6 @@
 from pathlib import Path
 import tempfile
-from flask import Flask, abort, render_template, request, redirect, url_for, flash, Response, send_file
+from flask import Flask, abort, render_template, request, redirect, url_for, flash, Response, send_file, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
@@ -14,6 +14,7 @@ import sqlite3
 import os
 import traceback
 import hashlib
+import datetime
 
 load_dotenv()
 
@@ -24,7 +25,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-VERSION = "1.0.3"
+VERSION = "1.1.0"
 
 
 def get_version():
@@ -41,11 +42,48 @@ def get_db():
 
 def init_db():
     conn = get_db()
+    # Пользователи
     conn.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL
+        )
+    ''')
+    # Комментарии
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            video_id TEXT NOT NULL,
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL,
+            text TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    # История просмотров
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS watch_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            video_id TEXT NOT NULL,
+            watched_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id, video_id)
+        )
+    ''')
+    # Счётчик просмотров
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS video_views (
+            video_id TEXT PRIMARY KEY,
+            views INTEGER DEFAULT 0
+        )
+    ''')
+    # Привязка видео к профилю
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS video_owners (
+            video_id TEXT PRIMARY KEY,
+            user_id INTEGER NOT NULL,
+            username TEXT NOT NULL
         )
     ''')
     conn.commit()
@@ -104,12 +142,72 @@ def generate_chunks(path, start_byte=0, end_byte=None):
                 remaining -= len(chunk)
             yield chunk
 
+
+def get_video_views(video_id):
+    conn = get_db()
+    row = conn.execute('SELECT views FROM video_views WHERE video_id = ?', (video_id,)).fetchone()
+    conn.close()
+    return row['views'] if row else 0
+
+
+def increment_views(video_id):
+    conn = get_db()
+    conn.execute('''
+        INSERT INTO video_views (video_id, views) VALUES (?, 1)
+        ON CONFLICT(video_id) DO UPDATE SET views = views + 1
+    ''', (video_id,))
+    conn.commit()
+    conn.close()
+
+
+def add_to_history(user_id, video_id):
+    conn = get_db()
+    conn.execute('''
+        INSERT INTO watch_history (user_id, video_id, watched_at)
+        VALUES (?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(user_id, video_id) DO UPDATE SET watched_at = CURRENT_TIMESTAMP
+    ''', (user_id, video_id))
+    conn.commit()
+    conn.close()
+
+
+def get_video_owner(video_id):
+    conn = get_db()
+    row = conn.execute('SELECT username, user_id FROM video_owners WHERE video_id = ?', (video_id,)).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def format_views(n):
+    if n >= 1_000_000:
+        return f"{n/1_000_000:.1f}M"
+    elif n >= 1_000:
+        return f"{n/1_000:.1f}K"
+    return str(n)
+
+
 # ==================== МАРШРУТЫ ====================
 
 
 @app.route('/')
 def index():
-    return render_template('index.html', videos=VIDEOS, user=current_user)
+    query = request.args.get('q', '').strip().lower()
+    videos = VIDEOS
+    if query:
+        videos = {vid_id: v for vid_id, v in VIDEOS.items()
+                  if query in v['title'].lower() or query in v.get('description', '').lower()}
+    # Добавляем просмотры и владельцев к видео
+    conn = get_db()
+    enriched = {}
+    for vid_id, v in videos.items():
+        row = conn.execute('SELECT views FROM video_views WHERE video_id = ?', (vid_id,)).fetchone()
+        owner = conn.execute('SELECT username FROM video_owners WHERE video_id = ?', (vid_id,)).fetchone()
+        enriched[vid_id] = dict(v)
+        enriched[vid_id]['views'] = row['views'] if row else 0
+        enriched[vid_id]['views_fmt'] = format_views(enriched[vid_id]['views'])
+        enriched[vid_id]['owner'] = owner['username'] if owner else None
+    conn.close()
+    return render_template('index.html', videos=enriched, user=current_user, query=query)
 
 
 @app.route('/favicon.ico')
@@ -117,16 +215,11 @@ def icon():
     b = bytes()
     with open("64x64.ico", 'rb') as f:
         b = f.read()
-
-    # Создаём ETag на основе содержимого файла
     etag = f'"{hashlib.md5(b).hexdigest()}"'
-
-    # Проверяем If-None-Match заголовок для кэша
     if request.headers.get('If-None-Match') == etag:
-        return Response(status=304)  # Not Modified
-
+        return Response(status=304)
     response = Response(b, status=200, mimetype="image/x-icon")
-    response.headers['Cache-Control'] = 'public, max-age=2592000'  # 30 дней
+    response.headers['Cache-Control'] = 'public, max-age=2592000'
     response.headers['ETag'] = etag
     return response
 
@@ -135,11 +228,130 @@ def icon():
 def watch(video_id):
     if video_id not in VIDEOS:
         return "Видео не найдено", 404
+
+    # Считаем просмотр
+    increment_views(video_id)
+
+    # История просмотров для авторизованных
+    if current_user.is_authenticated:
+        add_to_history(current_user.id, video_id)
+
+    views = get_video_views(video_id)
+    owner = get_video_owner(video_id)
+
+    # Загружаем комментарии
+    conn = get_db()
+    comments = conn.execute(
+        'SELECT * FROM comments WHERE video_id = ? ORDER BY created_at DESC',
+        (video_id,)
+    ).fetchall()
+    conn.close()
+
+    video_data = dict(VIDEOS[video_id])
+    video_data['views'] = views
+    video_data['views_fmt'] = format_views(views)
+
+    # Полный URL для превью (эмбеддинг)
+    base_url = request.host_url.rstrip('/')
+    thumbnail_url = f"{base_url}/{video_data.get('thumbnail', '')}" if video_data.get('thumbnail') else ''
+
     return render_template(
         'watch.html',
-        video=VIDEOS[video_id],
+        video=video_data,
         video_id=video_id,
-        user=current_user)
+        user=current_user,
+        comments=comments,
+        owner=owner,
+        thumbnail_url=thumbnail_url,
+        base_url=base_url
+    )
+
+
+@app.route('/comment/<video_id>', methods=['POST'])
+@login_required
+def add_comment(video_id):
+    if video_id not in VIDEOS:
+        abort(404)
+    text = request.form.get('text', '').strip()
+    if not text:
+        flash('Комментарий не может быть пустым', 'error')
+        return redirect(url_for('watch', video_id=video_id))
+    if len(text) > 1000:
+        flash('Комментарий слишком длинный (максимум 1000 символов)', 'error')
+        return redirect(url_for('watch', video_id=video_id))
+
+    conn = get_db()
+    conn.execute(
+        'INSERT INTO comments (video_id, user_id, username, text) VALUES (?, ?, ?, ?)',
+        (video_id, current_user.id, current_user.username, text)
+    )
+    conn.commit()
+    conn.close()
+    return redirect(url_for('watch', video_id=video_id) + '#comments')
+
+
+@app.route('/comment/delete/<int:comment_id>', methods=['POST'])
+@login_required
+def delete_comment(comment_id):
+    conn = get_db()
+    comment = conn.execute('SELECT * FROM comments WHERE id = ?', (comment_id,)).fetchone()
+    if not comment:
+        conn.close()
+        abort(404)
+    if comment['user_id'] != current_user.id:
+        conn.close()
+        abort(403)
+    video_id = comment['video_id']
+    conn.execute('DELETE FROM comments WHERE id = ?', (comment_id,))
+    conn.commit()
+    conn.close()
+    return redirect(url_for('watch', video_id=video_id) + '#comments')
+
+
+@app.route('/history')
+@login_required
+def history():
+    conn = get_db()
+    rows = conn.execute('''
+        SELECT video_id, watched_at FROM watch_history
+        WHERE user_id = ?
+        ORDER BY watched_at DESC
+        LIMIT 100
+    ''', (current_user.id,)).fetchall()
+    conn.close()
+
+    history_videos = []
+    for row in rows:
+        vid_id = row['video_id']
+        if vid_id in VIDEOS:
+            v = dict(VIDEOS[vid_id])
+            v['video_id'] = vid_id
+            v['watched_at'] = row['watched_at']
+            history_videos.append(v)
+
+    return render_template('history.html', videos=history_videos, user=current_user)
+
+
+@app.route('/profile/<username>')
+def profile(username):
+    conn = get_db()
+    user_row = conn.execute('SELECT id, username FROM users WHERE username = ?', (username,)).fetchone()
+    if not user_row:
+        conn.close()
+        return "Пользователь не найден", 404
+
+    owned = conn.execute('SELECT video_id FROM video_owners WHERE user_id = ?', (user_row['id'],)).fetchall()
+    conn.close()
+
+    user_videos = {}
+    for row in owned:
+        vid_id = row['video_id']
+        if vid_id in VIDEOS:
+            user_videos[vid_id] = dict(VIDEOS[vid_id])
+            user_videos[vid_id]['views'] = get_video_views(vid_id)
+            user_videos[vid_id]['views_fmt'] = format_views(user_videos[vid_id]['views'])
+
+    return render_template('profile.html', profile_user=dict(user_row), videos=user_videos, user=current_user)
 
 
 @app.route('/login', methods=['GET', 'POST'])
@@ -147,19 +359,16 @@ def login():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-
         conn = get_db()
         user = conn.execute(
             'SELECT * FROM users WHERE username = ?', (username,)).fetchone()
         conn.close()
-
         if user and check_password_hash(user['password'], password):
             user_obj = User(user['id'], user['username'])
             login_user(user_obj)
             return redirect(url_for('index'))
         else:
             flash('Неверный логин или пароль', 'error')
-
     return render_template('login.html')
 
 
@@ -168,33 +377,26 @@ def register():
     if request.method == 'POST':
         username = request.form['username']
         password = request.form['password']
-
         if not username or not password:
             flash('Заполните все поля', 'error')
             return redirect(url_for('register'))
-
         hashed_password = generate_password_hash(password)
-
         try:
             conn = get_db()
             user = conn.execute(
                 'SELECT * FROM users WHERE username = ?', (username,)).fetchone()
-            
             if user:
                 flash('Такой пользователь уже существует', 'error')
                 return redirect(url_for('register'))
-
             conn.execute(
                 'INSERT INTO users (username, password) VALUES (?, ?)',
-                (username,
-                 hashed_password))
+                (username, hashed_password))
             conn.commit()
             conn.close()
             flash('Регистрация успешна! Теперь войдите.', 'success')
             return redirect(url_for('login'))
         except sqlite3.IntegrityError:
             flash('Такой пользователь уже существует', 'error')
-
     return render_template('register.html')
 
 
@@ -203,7 +405,6 @@ def register():
 def upload_page():
     global VIDEOS
     if request.method == 'POST':
-        print(request.files)
         if 'video' not in request.files:
             flash('Видео не найдено', 'error')
             return Response(status=400)
@@ -240,22 +441,18 @@ def upload_page():
         os.makedirs(target_dir, exist_ok=False)
 
         cover_path = ''
-        if not cover_file.filename == '':
-            print('Cover has been loaded')
+        if cover_file and not cover_file.filename == '':
             cover_filename = video_id + \
                 str(Path(secure_filename(anyascii(cover_file.filename))).suffix)
             thumbnail.load_thumbnail(cover_filename, cover_file.read())
             cover_path = "thumbnail/" + cover_filename
 
-        file_path = ""
         success = True
         with tempfile.TemporaryDirectory() as tmp_dir:
             filename = video_id + ".mp4"
             file_path = Path(tmp_dir) / filename
             with open(file_path, 'wb') as f:
                 f.write(video_file.read())
-
-            print(file_path)
 
             try:
                 upload_video(
@@ -266,14 +463,22 @@ def upload_page():
                     cover_path)
             except Exception as e:
                 traceback.print_exc()
-                print(e)
                 success = False
 
         if not success:
             return Response(status=500)
 
+        # Привязываем видео к пользователю
+        conn = get_db()
+        conn.execute(
+            'INSERT OR REPLACE INTO video_owners (video_id, user_id, username) VALUES (?, ?, ?)',
+            (video_id, current_user.id, current_user.username)
+        )
+        conn.commit()
+        conn.close()
+
         VIDEOS = get_videos(VIDEOS_DIR)
-        return redirect(url_for('index'))
+        return redirect(url_for('watch', video_id=video_id))
     return render_template('upload.html', user=current_user)
 
 
@@ -306,10 +511,7 @@ def serve_video(video_id, quality):
         content_length = end - start + 1
 
         response = Response(
-            generate_chunks(
-                path,
-                start,
-                end),
+            generate_chunks(path, start, end),
             status=206,
             mimetype='video/mp4',
             direct_passthrough=True)
@@ -336,17 +538,14 @@ def thumbnail_serve(thumbnail_name):
         return Response(status=404)
 
     mt = mimetypes.guess_type(path)[0]
-
-    # Создаём ETag на основе размера и времени модификации файла
     stat_info = os.stat(path)
     etag = f'"{stat_info.st_mtime}-{stat_info.st_size}"'
 
-    # Проверяем If-None-Match заголовок для кэша
     if request.headers.get('If-None-Match') == etag:
-        return Response(status=304)  # Not Modified
+        return Response(status=304)
 
     response = send_file(path, mimetype=mt)
-    response.headers['Cache-Control'] = 'public, max-age=2592000'  # 30 дней
+    response.headers['Cache-Control'] = 'public, max-age=2592000'
     response.headers['ETag'] = etag
     return response
 
@@ -355,43 +554,13 @@ if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(
         description='Запуск Flask-сервера для видео-платформы')
-
-    parser.add_argument(
-        '--host',
-        '-H',
-        default='0.0.0.0',
-        help='IP-адрес для прослушивания (по умолчанию: все интерфейсы)')
-    parser.add_argument(
-        '--port',
-        '-p',
-        type=int,
-        default=5000,
-        help='Порт для прослушивания (по умолчанию: 5000)')
-    parser.add_argument(
-        '--debug',
-        '-d',
-        action='store_true',
-        help='Запуск в режиме отладки')
-    parser.add_argument(
-        '--video_dir',
-        '-v',
-        default='videos',
-        help='Путь к директории для видео (по умолчанию: videos)')
-    parser.add_argument(
-        '--thumbnail_dir',
-        '-t',
-        default='thumbnail',
-        help='thumbnail dir')
-    parser.add_argument(
-        '--version',
-        '-V',
-        action='store_true',
-        help='Show program version')
-    parser.add_argument(
-        '--no-check-update',
-        '-N',
-        action='store_true',
-        help='Cancel check update')
+    parser.add_argument('--host', '-H', default='0.0.0.0')
+    parser.add_argument('--port', '-p', type=int, default=5000)
+    parser.add_argument('--debug', '-d', action='store_true')
+    parser.add_argument('--video_dir', '-v', default='videos')
+    parser.add_argument('--thumbnail_dir', '-t', default='thumbnail')
+    parser.add_argument('--version', '-V', action='store_true')
+    parser.add_argument('--no-check-update', '-N', action='store_true')
 
     args = parser.parse_args()
 
@@ -399,21 +568,22 @@ if __name__ == '__main__':
         print(f"UltraStream {get_version()}")
         exit()
 
-    check_update = not args.no_check_update
-    if check_update:
-        from updater import check_update, get_latest_release, update
-        if check_update():
-            print("Update available!")
-            i = True if input(
-                "Do you want to update now? (y/n): ").lower() == 'y' else False
-            if i:
-                update(get_latest_release())
-        else:
-            print("No update available.")
+    check_upd = not args.no_check_update
+    if check_upd:
+        try:
+            from updater import check_update, get_latest_release, update
+            if check_update():
+                print("Update available!")
+                i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
+                if i:
+                    update(get_latest_release())
+            else:
+                print("No update available.")
+        except Exception:
+            pass
 
     VIDEOS_DIR = args.video_dir
     VIDEOS = get_videos(args.video_dir)
-
     thumbnail.standard_dir = args.thumbnail_dir
 
     app.run(host=args.host, port=args.port, debug=args.debug)
