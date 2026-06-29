@@ -1,10 +1,10 @@
-import os
 import sys
 import subprocess
 
+
 def get_cmdline(pid: int) -> list[str]:
     """Возвращает список аргументов командной строки процесса по PID."""
-    
+
     platform = sys.platform
 
     # Linux / Android

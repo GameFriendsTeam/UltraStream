@@ -10,7 +10,8 @@ from werkzeug.utils import secure_filename
 from loader import get_videos, upload_video
 import thumbnail
 import sqlite3
-import os, traceback
+import os
+import traceback
 import hashlib
 
 app = Flask(__name__)
@@ -21,15 +22,19 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 VERSION = "1.0.1"
+
+
 def get_version():
-    global VERSION
     return VERSION
 
 # ==================== БАЗА ДАННЫХ ====================
+
+
 def get_db():
     conn = sqlite3.connect('users.db')
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def init_db():
     conn = get_db()
@@ -43,25 +48,31 @@ def init_db():
     conn.commit()
     conn.close()
 
+
 init_db()
+
 
 class User(UserMixin):
     def __init__(self, id, username):
         self.id = id
         self.username = username
 
+
 @login_manager.user_loader
 def load_user(user_id):
     conn = get_db()
-    user = conn.execute('SELECT * FROM users WHERE id = ?', (user_id,)).fetchone()
+    user = conn.execute('SELECT * FROM users WHERE id = ?',
+                        (user_id,)).fetchone()
     conn.close()
     if user:
         return User(user['id'], user['username'])
     return None
 
+
 # ==================== ВИДЕО ====================
 VIDEOS_DIR = 'videos'
 VIDEOS = get_videos(VIDEOS_DIR)
+
 
 def get_video_path(video_id, quality):
     if video_id not in VIDEOS:
@@ -71,6 +82,7 @@ def get_video_path(video_id, quality):
     filename = VIDEOS[video_id]["files"][quality]
     return filename
 
+
 def generate_chunks(path, start_byte=0, end_byte=None):
     with open(path, 'rb') as f:
         f.seek(start_byte)
@@ -79,7 +91,9 @@ def generate_chunks(path, start_byte=0, end_byte=None):
         while True:
             if remaining is not None and remaining <= 0:
                 break
-            read_size = min(chunk_size, remaining) if remaining is not None else chunk_size
+            read_size = min(
+                chunk_size,
+                remaining) if remaining is not None else chunk_size
             chunk = f.read(read_size)
             if not chunk:
                 break
@@ -89,33 +103,41 @@ def generate_chunks(path, start_byte=0, end_byte=None):
 
 # ==================== МАРШРУТЫ ====================
 
+
 @app.route('/')
 def index():
     return render_template('index.html', videos=VIDEOS, user=current_user)
+
 
 @app.route('/favicon.ico')
 def icon():
     b = bytes()
     with open("64x64.ico", 'rb') as f:
         b = f.read()
-    
+
     # Создаём ETag на основе содержимого файла
     etag = f'"{hashlib.md5(b).hexdigest()}"'
-    
+
     # Проверяем If-None-Match заголовок для кэша
     if request.headers.get('If-None-Match') == etag:
         return Response(status=304)  # Not Modified
-    
+
     response = Response(b, status=200, mimetype="image/x-icon")
     response.headers['Cache-Control'] = 'public, max-age=2592000'  # 30 дней
     response.headers['ETag'] = etag
     return response
 
+
 @app.route('/watch/<video_id>')
 def watch(video_id):
     if video_id not in VIDEOS:
         return "Видео не найдено", 404
-    return render_template('watch.html', video=VIDEOS[video_id], video_id=video_id, user=current_user)
+    return render_template(
+        'watch.html',
+        video=VIDEOS[video_id],
+        video_id=video_id,
+        user=current_user)
+
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -124,7 +146,8 @@ def login():
         password = request.form['password']
 
         conn = get_db()
-        user = conn.execute('SELECT * FROM users WHERE username = ?', (username,)).fetchone()
+        user = conn.execute(
+            'SELECT * FROM users WHERE username = ?', (username,)).fetchone()
         conn.close()
 
         if user and check_password_hash(user['password'], password):
@@ -135,6 +158,7 @@ def login():
             flash('Неверный логин или пароль', 'error')
 
     return render_template('login.html')
+
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -150,8 +174,10 @@ def register():
 
         try:
             conn = get_db()
-            conn.execute('INSERT INTO users (username, password) VALUES (?, ?)', 
-                        (username, hashed_password))
+            conn.execute(
+                'INSERT INTO users (username, password) VALUES (?, ?)',
+                (username,
+                 hashed_password))
             conn.commit()
             conn.close()
             flash('Регистрация успешна! Теперь войдите.', 'success')
@@ -160,6 +186,7 @@ def register():
             flash('Такой пользователь уже существует', 'error')
 
     return render_template('register.html')
+
 
 @app.route('/upload', methods=['GET', 'POST'])
 @login_required
@@ -186,19 +213,19 @@ def upload_page():
         video_id = str(uuid.uuid4())[:16]
         target_dir = str(Path(VIDEOS_DIR) / video_id)
         os.makedirs(target_dir, exist_ok=False)
-        
+
         cover_path = ''
         if not cover_file.filename == '':
             print('Cover has been loaded')
-            cover_filename = video_id+str(Path(secure_filename(anyascii(cover_file.filename))).suffix)
+            cover_filename = video_id + \
+                str(Path(secure_filename(anyascii(cover_file.filename))).suffix)
             thumbnail.load_thumbnail(cover_filename, cover_file.read())
-            cover_path = "thumbnail/"+cover_filename
+            cover_path = "thumbnail/" + cover_filename
 
-        
         file_path = ""
         success = True
         with tempfile.TemporaryDirectory() as tmp_dir:
-            filename = video_id+".mp4"
+            filename = video_id + ".mp4"
             file_path = Path(tmp_dir) / filename
             with open(file_path, 'wb') as f:
                 f.write(video_file.read())
@@ -206,7 +233,12 @@ def upload_page():
             print(file_path)
 
             try:
-                upload_video(target_dir, str(file_path), title, description, cover_path)
+                upload_video(
+                    target_dir,
+                    str(file_path),
+                    title,
+                    description,
+                    cover_path)
             except Exception as e:
                 traceback.print_exc()
                 print(e)
@@ -227,6 +259,8 @@ def logout():
     return redirect(url_for('login'))
 
 # ==================== СТРИМИНГ ВИДЕО ====================
+
+
 @app.route('/video/<video_id>/<quality>')
 def serve_video(video_id, quality):
     path = get_video_path(video_id, quality)
@@ -246,18 +280,30 @@ def serve_video(video_id, quality):
             end = file_size - 1
         content_length = end - start + 1
 
-        response = Response(generate_chunks(path, start, end), status=206, mimetype='video/mp4', direct_passthrough=True)
+        response = Response(
+            generate_chunks(
+                path,
+                start,
+                end),
+            status=206,
+            mimetype='video/mp4',
+            direct_passthrough=True)
         response.headers['Content-Range'] = f'bytes {start}-{end}/{file_size}'
         response.headers['Accept-Ranges'] = 'bytes'
         response.headers['Content-Length'] = str(content_length)
         return response
     else:
-        response = Response(generate_chunks(path), mimetype='video/mp4', direct_passthrough=True)
+        response = Response(
+            generate_chunks(path),
+            mimetype='video/mp4',
+            direct_passthrough=True)
         response.headers['Content-Length'] = str(file_size)
         response.headers['Accept-Ranges'] = 'bytes'
         return response
-    
+
 # ==================== thumbnail ====================
+
+
 @app.route('/thumbnail/<thumbnail_name>')
 def thumbnail_serve(thumbnail_name):
     path = thumbnail.get_thumbnail_path(thumbnail_name)
@@ -265,32 +311,61 @@ def thumbnail_serve(thumbnail_name):
         return Response(status=404)
 
     mt = mimetypes.guess_type(path)[0]
-    
+
     # Создаём ETag на основе размера и времени модификации файла
     stat_info = os.stat(path)
     etag = f'"{stat_info.st_mtime}-{stat_info.st_size}"'
-    
+
     # Проверяем If-None-Match заголовок для кэша
     if request.headers.get('If-None-Match') == etag:
         return Response(status=304)  # Not Modified
-    
+
     response = send_file(path, mimetype=mt)
     response.headers['Cache-Control'] = 'public, max-age=2592000'  # 30 дней
     response.headers['ETag'] = etag
     return response
 
 
-
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description='Запуск Flask-сервера для видео-платформы')
-    parser.add_argument('--host', '-H', default='0.0.0.0', help='IP-адрес для прослушивания (по умолчанию: все интерфейсы)')
-    parser.add_argument('--port', '-p', type=int, default=5000, help='Порт для прослушивания (по умолчанию: 5000)')
-    parser.add_argument('--debug', '-d', action='store_true', help='Запуск в режиме отладки')
-    parser.add_argument('--video_dir', '-v', default='videos', help='Путь к директории для видео (по умолчанию: videos)')
-    parser.add_argument('--thumbnail_dir', '-t', default='thumbnail', help='thumbnail dir')
-    parser.add_argument('--version', '-V', action='version', version='Show program version')
-    parser.add_argument('--no-check-update', '-N', action='store_true', help='Cancel check update')
+    parser = argparse.ArgumentParser(
+        description='Запуск Flask-сервера для видео-платформы')
+    parser.add_argument(
+        '--host',
+        '-H',
+        default='0.0.0.0',
+        help='IP-адрес для прослушивания (по умолчанию: все интерфейсы)')
+    parser.add_argument(
+        '--port',
+        '-p',
+        type=int,
+        default=5000,
+        help='Порт для прослушивания (по умолчанию: 5000)')
+    parser.add_argument(
+        '--debug',
+        '-d',
+        action='store_true',
+        help='Запуск в режиме отладки')
+    parser.add_argument(
+        '--video_dir',
+        '-v',
+        default='videos',
+        help='Путь к директории для видео (по умолчанию: videos)')
+    parser.add_argument(
+        '--thumbnail_dir',
+        '-t',
+        default='thumbnail',
+        help='thumbnail dir')
+    parser.add_argument(
+        '--version',
+        '-V',
+        action='version',
+        version='Show program version')
+    parser.add_argument(
+        '--no-check-update',
+        '-N',
+        action='store_true',
+        help='Cancel check update')
     args = parser.parse_args()
 
     if args.version:
@@ -302,7 +377,8 @@ if __name__ == '__main__':
         from updater import check_update, get_latest_release, update
         if check_update():
             print("Update available!")
-            i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
+            i = True if input(
+                "Do you want to update now? (y/n): ").lower() == 'y' else False
             if i:
                 update(get_latest_release())
         else:
