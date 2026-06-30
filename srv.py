@@ -575,6 +575,7 @@ if __name__ == '__main__':
             if check_update():
                 print("Update available!")
                 i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
+                print("User selection: ", i)
                 if i:
                     update(get_latest_release())
             else:
