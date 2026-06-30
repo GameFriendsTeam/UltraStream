@@ -3,7 +3,8 @@ import tempfile
 import uuid
 import os
 import utils
-import subprocess
+import random
+import string
 from pathlib import Path
 from srv import get_version
 import traceback
@@ -70,9 +71,10 @@ def prepare_updater(update_dir: str, target_zip: str, target_dir: str):
 
     cmd = utils.get_cmdline(pid)
 #    pcmd = utils.get_cmdline(parent_pid)
-
     fname = f"{update_dir}/updater.py"
-    with open(fname, "w") as f:
+    mode = "w+" if os.path.exists(fname) else "w"
+
+    with open(fname, mode) as f:
         f.write(f"""import os, zipfile, shutil, time, subprocess, sys
 print("Updater started...")
 os.kill({pid}, 9)
@@ -90,8 +92,11 @@ platform = sys.platform
 if (platform.startswith("linux") or platform.startswith('android') or
     platform == "darwin" or platform.startswith("freebsd")):
     subprocess.Popen(cmd, start_new_session=True)
+    subprocess.Popen(['python3', '-c', '"import shutil;shutil.rmtree(\\"{update_dir}\\")"'], start_new_session=True)
 elif platform == "win32":
     subprocess.Popen({cmd}, creationflags=subprocess.DETACHED_PROCESS)
+    subprocess.Popen(['python', '-c', '"import shutil;shutil.rmtree(\\"{update_dir}\\")"'], creationflags=subprocess.DETACHED_PROCESS)
+
 """)
     return fname
 
@@ -106,18 +111,20 @@ def update(release: tuple[str, list[dict]]):
     name = asset_d.get('name', uuid.uuid4().hex)
     current_dir = str(Path.cwd())
 
-    with tempfile.TemporaryDirectory() as tmp_dir:
-        asset_path = f"{tmp_dir}/{name}"
-        updaterF = prepare_updater(tmp_dir, asset_path, current_dir)
-        try:
-            response = requests.get(asset_d.get("download_url"), stream=True)
-            response.raise_for_status()
-            with open(asset_path, "wb") as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
+    tmp_dir = tempfile.gettempdir()+"/"+"".join(random.choices(string.ascii_letters+string.digits, k=10))
+    os.makedirs(tmp_dir, mode=775, exist_ok=True)
+    updaterF = prepare_updater(tmp_dir, asset_path, current_dir)
 
-            utils.run_detached_process(["python", updaterF])
-            return True
-        except requests.RequestException as e:
-            print(f"Error downloading the asset: {e}")
-            return False
+    asset_path = f"{tmp_dir}/{name}"
+    try:
+        response = requests.get(asset_d.get("download_url"), stream=True)
+        response.raise_for_status()
+        with open(asset_path, "wb") as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+
+        utils.run_detached_process(["python", updaterF])
+        return True
+    except requests.RequestException as e:
+        print(f"Error downloading the asset: {e}")
+        return False
