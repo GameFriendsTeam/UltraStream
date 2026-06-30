@@ -110,8 +110,8 @@ def update(release: tuple[str, list[dict]]):
 
     name = asset_d.get('name', uuid.uuid4().hex)
     current_dir = str(Path.cwd())
-    asset_path = f"{tmp_dir}/{name}"
     tmp_dir = tempfile.gettempdir()+"/"+"".join(random.choices(string.ascii_letters+string.digits, k=10))
+    asset_path = f"{tmp_dir}/{name}"
 
     os.makedirs(tmp_dir, mode=775, exist_ok=True)
     updaterF = prepare_updater(tmp_dir, asset_path, current_dir)
