@@ -6,8 +6,11 @@ import utils
 import random
 import string
 from pathlib import Path
-from srv import get_version
 import traceback
+
+
+class ServerNotFound(Exception):
+    pass
 
 
 def get_latest_release():
@@ -43,6 +46,11 @@ def get_asset_data(asset):
 
 
 def check_update():
+    try:
+        from srv import get_version
+    except ImportError:
+        raise ServerNotFound("Please place this script in dir of server")
+        
     latest_release = get_latest_release()
     if not latest_release:
         print("Failed to fetch the latest release information.")
@@ -102,6 +110,7 @@ elif platform == "win32":
 
 
 def update(release: tuple[str, list[dict]]):
+    print("Updating...")
     tag, assets = release
     asset_d = get_asset_data(assets[0]) if assets else None
     if not asset_d:
@@ -128,3 +137,16 @@ def update(release: tuple[str, list[dict]]):
     except requests.RequestException as e:
         print(f"Error downloading the asset: {e}")
         return False
+
+if __name__ == "__main__":
+    try:
+        from updater import check_update, get_latest_release, update
+        if check_update():
+            print("Update available!")
+            i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
+            if i:
+                update(get_latest_release())
+        else:
+            print("No update available.")
+    except Exception:
+        pass
