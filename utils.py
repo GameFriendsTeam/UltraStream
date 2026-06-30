@@ -8,7 +8,7 @@ def get_cmdline(pid: int) -> list[str]:
     platform = sys.platform
 
     # Linux / Android
-    if platform.startswith("linux"):
+    if platform.startswith("linux") or platform.startswith('android'):
         with open(f"/proc/{pid}/cmdline", "rb") as f:
             data = f.read()
         # Аргументы разделены нулевыми байтами
