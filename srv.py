@@ -589,4 +589,4 @@ if __name__ == '__main__':
     VIDEOS = get_videos(args.video_dir)
     thumbnail.standard_dir = args.thumbnail_dir
 
-    app.run(host=args.host, port=args.port, debug=args.debug)
+    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)

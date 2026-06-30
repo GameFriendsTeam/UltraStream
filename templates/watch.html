@@ -494,6 +494,8 @@ function switchQuality(q) {
     currentQuality = q;
     localStorage.setItem('preferredQuality', q);
     showOverlay(true);
+    suppressErrorUntil = Date.now() + 2000;
+    retryCount = 0;
     video.src = `/video/${VIDEO_ID}/${q}`;
     video.load();
     video.addEventListener('canplay', () => {
@@ -590,19 +592,35 @@ playerCont.addEventListener('mouseleave', () => {
     if (isPlaying) playerCtrl.classList.remove('active');
 });
 
-// Mobile: тап по плееру показывает/скрывает контролы
+// Mobile: один тап — play/pause (и заодно показывает контролы через события play/pause),
+// двойной тап — полноэкранный режим. Тап именно по самим контролам не перехватываем.
 if (IS_MOBILE) {
-    let tapTimeout = null;
-    playerCont.addEventListener('touchstart', e => {
+    let tapTimer = null;
+    playerCont.addEventListener('touchend', e => {
         if (e.target.closest('.custom-player-controls')) return;
-        if (playerCtrl.classList.contains('active')) {
-            playerCtrl.classList.remove('active');
-        } else {
-            playerCtrl.classList.add('active');
-            clearTimeout(tapTimeout);
-            tapTimeout = setTimeout(() => playerCtrl.classList.remove('active'), 3000);
+        e.preventDefault();
+
+        if (tapTimer) {
+            // второй тап подряд — это двойной тап
+            clearTimeout(tapTimer);
+            tapTimer = null;
+            togglePlay(); // на всякий случай гарантируем воспроизведение
+            if (!document.fullscreenElement) {
+                playerCont.requestFullscreen().catch(() => {});
+                fullscreenBtn.innerHTML = '<i class="fa-solid fa-compress"></i>';
+            } else {
+                document.exitFullscreen();
+                fullscreenBtn.innerHTML = '<i class="fa-solid fa-expand"></i>';
+            }
+            return;
         }
-    });
+
+        tapTimer = setTimeout(() => {
+            tapTimer = null;
+            togglePlay();
+            showControls();
+        }, 280);
+    }, { passive: false });
 }
 
 // ==================== События видео ====================
@@ -639,18 +657,7 @@ playerCont.addEventListener('click', e => {
     if (!IS_MOBILE) togglePlay();
 });
 
-// Double tap fullscreen on mobile
-if (IS_MOBILE) {
-    let lastTap = 0;
-    playerCont.addEventListener('touchend', e => {
-        if (e.target.closest('.custom-player-controls')) return;
-        const now = Date.now();
-        if (now - lastTap < 300) {
-            togglePlay();
-        }
-        lastTap = now;
-    });
-}
+// (двойной тап для fullscreen на мобильном обрабатывается выше, в едином touchend-хендлере)
 
 // ==================== Скорость ====================
 speedBtn.addEventListener('click', e => {
@@ -702,12 +709,37 @@ document.addEventListener('click', e => {
 
 // ==================== Ошибки ====================
 let retryCount = 0;
+let suppressErrorUntil = 0; // окно времени, когда error — ожидаемый побочный эффект switchQuality()
+
 video.addEventListener('error', () => {
+    // MEDIA_ERR_ABORTED (код 1) — это штатное прерывание при смене src/load(),
+    // а не реальный сбой воспроизведения. Игнорируем его всегда.
+    if (video.error && video.error.code === 1) return;
+    // Игнорируем ошибки, возникшие сразу после нашей же смены качества/перезагрузки.
+    if (Date.now() < suppressErrorUntil) return;
+
     retryCount++;
-    if (retryCount === 1 && currentQuality !== AVAILABLE_QUALITIES[0]) {
+
+    if (retryCount <= 3) {
+        // Сначала пробуем просто перезагрузить тот же поток (частая причина —
+        // временная сетевая заминка, а не битый файл).
+        const t = video.currentTime;
+        const wasPlaying = !video.paused;
+        suppressErrorUntil = Date.now() + 2000;
+        video.load();
+        video.addEventListener('loadedmetadata', () => {
+            video.currentTime = t;
+            if (wasPlaying) video.play().catch(() => {});
+        }, { once: true });
+        return;
+    }
+
+    if (retryCount === 4 && currentQuality !== AVAILABLE_QUALITIES[0]) {
+        retryCount = 0;
         switchQuality(AVAILABLE_QUALITIES[0]);
         return;
     }
+
     overlay.innerHTML = `
         <div class="text-center px-6">
             <i class="fa-solid fa-circle-exclamation text-3xl text-red-400 mb-3 block"></i>
@@ -764,11 +796,14 @@ function initPlayer() {
         </div>`;
 }
 
-// Адаптируем размер плеера под реальные размеры видео
+// Адаптируем размер плеера под реальные размеры видео — но только один раз,
+// чтобы переключение качества / перезагрузка потока не меняли размер плеера.
+let aspectRatioLocked = false;
 video.addEventListener('loadedmetadata', () => {
     durationTxt.textContent = fmt(video.duration);
-    if (video.videoWidth && video.videoHeight) {
+    if (!aspectRatioLocked && video.videoWidth && video.videoHeight) {
         setAspectRatio(video.videoWidth, video.videoHeight);
+        aspectRatioLocked = true;
     }
 });
 
