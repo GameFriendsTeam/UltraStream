@@ -81,6 +81,7 @@ def prepare_updater(update_dir: str, target_zip: str, target_dir: str):
 #    pcmd = utils.get_cmdline(parent_pid)
     fname = f"{update_dir}/updater.py"
     mode = "w+" if os.path.exists(fname) else "w"
+    std = os.stdout
 
     with open(fname, mode) as f:
         f.write(f"""import os, zipfile, shutil, time, subprocess, sys
@@ -99,7 +100,7 @@ platform = sys.platform
 
 if (platform.startswith("linux") or platform.startswith('android') or
     platform == "darwin" or platform.startswith("freebsd")):
-    subprocess.Popen({cmd}, start_new_session=True)
+    subprocess.Popen({cmd}, start_new_session=True, stdout=)
     subprocess.Popen(['python3', '-c', '"import shutil;shutil.rmtree(\\"{update_dir}\\")"'], start_new_session=True)
 elif platform == "win32":
     subprocess.Popen({cmd}, creationflags=subprocess.DETACHED_PROCESS)
@@ -132,7 +133,7 @@ def update(release: tuple[str, list[dict]]):
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        utils.run_detached_process(["python", updaterF], stdout=open('update.log', "w+b"), stderr=open("update-error.log", "w+b"))
+        utils.run_detached_process(["python", updaterF])
         return True
     except requests.RequestException as e:
         print(f"Error downloading the asset: {e}")
