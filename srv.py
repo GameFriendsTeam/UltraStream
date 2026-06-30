@@ -25,7 +25,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-VERSION = "1.1.0"
+VERSION = "1.1.1"
 
 
 def get_version():
@@ -583,6 +583,8 @@ if __name__ == '__main__':
             pass
 
     VIDEOS_DIR = args.video_dir
+    os.makedirs(VIDEOS_DIR, mode=775, exist_ok=True)
+
     VIDEOS = get_videos(args.video_dir)
     thumbnail.standard_dir = args.thumbnail_dir
 
