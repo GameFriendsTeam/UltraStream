@@ -91,7 +91,7 @@ platform = sys.platform
 
 if (platform.startswith("linux") or platform.startswith('android') or
     platform == "darwin" or platform.startswith("freebsd")):
-    subprocess.Popen(cmd, start_new_session=True)
+    subprocess.Popen({cmd}, start_new_session=True)
     subprocess.Popen(['python3', '-c', '"import shutil;shutil.rmtree(\\"{update_dir}\\")"'], start_new_session=True)
 elif platform == "win32":
     subprocess.Popen({cmd}, creationflags=subprocess.DETACHED_PROCESS)
