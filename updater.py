@@ -73,7 +73,7 @@ def prepare_updater(update_dir: str, target_zip: str, target_dir: str):
 
     fname = f"{update_dir}/updater.py"
     with open(fname, "w") as f:
-        f.write(f"""import os, zipfile, shutil, time, subprocess
+        f.write(f"""import os, zipfile, shutil, time, subprocess, sys
 print("Updater started...")
 os.kill({pid}, 9)
 
@@ -85,7 +85,13 @@ with zipfile.ZipFile("{target_zip}", 'r') as zip_ref:
 
 os.remove("{target_zip}")
 
-subprocess.Popen({cmd}, creationflags=subprocess.DETACHED_PROCESS)
+platform = sys.platform
+
+if (platform.startswith("linux") or platform.startswith('android') or
+    platform == "darwin" or platform.startswith("freebsd")):
+    subprocess.Popen(cmd, start_new_session=True)
+elif platform == "win32":
+    subprocess.Popen({cmd}, creationflags=subprocess.DETACHED_PROCESS)
 """)
     return fname
 
@@ -110,8 +116,7 @@ def update(release: tuple[str, list[dict]]):
                 for chunk in response.iter_content(chunk_size=8192):
                     f.write(chunk)
 
-            subprocess.Popen(["python", updaterF],
-                             creationflags=subprocess.DETACHED_PROCESS)
+            utils.run_detached_process(["python", updaterF])
             return True
         except requests.RequestException as e:
             print(f"Error downloading the asset: {e}")
