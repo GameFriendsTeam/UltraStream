@@ -138,15 +138,12 @@ def update(release: tuple[str, list[dict]]):
         print(f"Error downloading the asset: {e}")
         return False
 
+
 if __name__ == "__main__":
-    try:
-        from updater import check_update, get_latest_release, update
-        if check_update():
-            print("Update available!")
-            i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
-            if i:
-                update(get_latest_release())
-        else:
-            print("No update available.")
-    except Exception:
-        pass
+    if check_update():
+        print("Update available!")
+        i = True if input("Do you want to update now? (y/n): ").lower() == 'y' else False
+        if i:
+            update(get_latest_release())
+    else:
+        print("No update available.")
