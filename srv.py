@@ -25,7 +25,7 @@ login_manager = LoginManager()
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 
 
 def get_version():
