@@ -9,6 +9,69 @@ from thumbnail import generate_thumbnail_from_video
 # Минимальные размеры для NVENC (аппаратный энкодер NVIDIA)
 NVENC_MIN_DIM = 128  # пикселей — жёсткое ограничение драйвера
 
+# Кеш результата проверки доступности NVIDIA GPU (вычисляется один раз за процесс)
+_gpu_available_cache: Optional[bool] = None
+
+
+def is_nvidia_gpu_available(force_recheck: bool = False) -> bool:
+    """
+    Проверяет, доступен ли NVIDIA GPU с поддержкой NVENC/CUDA в текущем окружении.
+
+    Проверка реальная (а не основанная на предположениях):
+    1. nvidia-smi должен быть доступен и успешно отработать (значит, драйвер и GPU есть).
+    2. ffmpeg должен быть собран с поддержкой hwaccel=cuda.
+    3. ffmpeg должен иметь хотя бы один из энкодеров *_nvenc.
+
+    Результат кешируется в рамках процесса, чтобы не дёргать subprocess на каждый вызов.
+    Используйте force_recheck=True, если окружение могло измениться (например, после
+    подключения/отключения GPU в виртуализированном контейнере).
+    """
+    global _gpu_available_cache
+    if _gpu_available_cache is not None and not force_recheck:
+        return _gpu_available_cache
+
+    # 1. Проверяем наличие и работоспособность nvidia-smi
+    try:
+        result = subprocess.run(
+            ['nvidia-smi'],
+            capture_output=True, text=True, timeout=5
+        )
+        if result.returncode != 0:
+            _gpu_available_cache = False
+            return False
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        _gpu_available_cache = False
+        return False
+
+    # 2. Проверяем, что ffmpeg собран с поддержкой cuda hwaccel
+    try:
+        hwaccels = subprocess.run(
+            ['ffmpeg', '-hide_banner', '-hwaccels'],
+            capture_output=True, text=True, timeout=5
+        )
+        if 'cuda' not in hwaccels.stdout.lower():
+            _gpu_available_cache = False
+            return False
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        _gpu_available_cache = False
+        return False
+
+    # 3. Проверяем наличие nvenc-энкодеров в сборке ffmpeg
+    try:
+        encoders = subprocess.run(
+            ['ffmpeg', '-hide_banner', '-encoders'],
+            capture_output=True, text=True, timeout=5
+        )
+        if 'nvenc' not in encoders.stdout.lower():
+            _gpu_available_cache = False
+            return False
+    except (FileNotFoundError, subprocess.TimeoutExpired, OSError):
+        _gpu_available_cache = False
+        return False
+
+    _gpu_available_cache = True
+    return True
+
 
 def in_B_not_in_A(A: list, B: list) -> list:
     return [x for x in B if x not in set(A)]
@@ -40,8 +103,12 @@ def calculate_resolution_for_format(height: int, aspect_ratio: str) -> tuple[int
     return (width, height)
 
 
-def get_decoder_lib_by_codec_name(codec_name: str, prefer_hw: str = "cuda") -> str:
+def get_decoder_lib_by_codec_name(codec_name: str, prefer_hw: Optional[str] = None) -> str:
     codec = codec_name.lower().strip()
+
+    # Если не указано явно, решаем на основе реальной доступности GPU
+    if prefer_hw is None:
+        prefer_hw = "cuda" if is_nvidia_gpu_available() else "cpu"
 
     if prefer_hw == "cuda":
         hw_decoders = {
@@ -69,10 +136,14 @@ def get_decoder_lib_by_codec_name(codec_name: str, prefer_hw: str = "cuda") -> s
 
 def get_codec_lib_by_codec_name(
     codec_name: str,
-    prefer_hw: str = "nvenc",
+    prefer_hw: Optional[str] = None,
     is_10bit: bool = False
 ) -> str:
     codec = codec_name.lower().strip()
+
+    # Если не указано явно, решаем на основе реальной доступности GPU
+    if prefer_hw is None:
+        prefer_hw = "nvenc" if is_nvidia_gpu_available() else "software"
 
     if prefer_hw == "nvenc":
         if codec in ("hevc", "h265") or is_10bit:
@@ -225,20 +296,19 @@ def make_multi_output_cmd(
     1. AV1 cuvid → программный декодер (chroma format несовместимость)
     2. Минимальный размер NVENC = 128px (иначе InitializeEncoder failed)
     3. Чётные размеры для всех кодеков
+    4. NVIDIA GPU используется только если он реально доступен в окружении —
+       иначе автоматически используется программный декодер/scale/энкодер.
     """
     codec_name = video_meta.get('video_codec', 'h264')
-    decoder = get_decoder_lib_by_codec_name(codec_name)
     is_av1 = 'av1' in codec_name.lower()
 
-    # Для AV1 не используем аппаратное ускорение декодирования/масштабирования
-    if is_av1:
-        cmd = [
-            'ffmpeg',
-            "-hide_banner",
-            '-c:v', decoder,   # программный декодер av1
-            '-i', video_file,
-        ]
-    else:
+    gpu_available = is_nvidia_gpu_available()
+    # GPU-путь применим только если он доступен и кодек не AV1
+    # (AV1 cuvid-декодер несовместим с нестандартным chroma format)
+    use_gpu = gpu_available and not is_av1
+
+    if use_gpu:
+        decoder = get_decoder_lib_by_codec_name(codec_name, prefer_hw="cuda")
         cmd = [
             'ffmpeg',
             "-hide_banner",
@@ -247,6 +317,16 @@ def make_multi_output_cmd(
             '-c:v', decoder,
             '-i', video_file,
         ]
+    else:
+        decoder = get_decoder_lib_by_codec_name(codec_name, prefer_hw="cpu")
+        cmd = [
+            'ffmpeg',
+            "-hide_banner",
+            '-c:v', decoder,
+            '-i', video_file,
+        ]
+        if not gpu_available:
+            print("NVIDIA GPU не обнаружен — используется программный декодер/энкодер.")
 
     original_height = video_meta.get('height', 0)
     original_width = video_meta.get('width', 0)
@@ -256,17 +336,19 @@ def make_multi_output_cmd(
         actual_height = min(target_height, original_height)
         width, actual_height = calculate_resolution_for_format(actual_height, aspect_ratio)
 
-        # Гарантируем минимум NVENC
-        actual_height = max(actual_height, NVENC_MIN_DIM)
-        width = max(width, NVENC_MIN_DIM)
+        if use_gpu:
+            # Гарантируем минимум NVENC
+            actual_height = max(actual_height, NVENC_MIN_DIM)
+            width = max(width, NVENC_MIN_DIM)
+            encoder = get_codec_lib_by_codec_name(codec_name, prefer_hw="nvenc", is_10bit=video_meta.get('is_10bit', False))
+        else:
+            encoder = get_codec_lib_by_codec_name(codec_name, prefer_hw="software", is_10bit=video_meta.get('is_10bit', False))
 
         target_br = get_bitrate(actual_height, width, int(video_meta.get('fps', 30) or 30), 0.085)
-        encoder = get_codec_lib_by_codec_name(codec_name, is_10bit=video_meta.get('is_10bit', False))
 
-        if is_av1:
-            # Программное масштабирование для AV1
+        if use_gpu:
             cmd += [
-                '-vf', f'scale={width}:{actual_height}:flags=lanczos',
+                '-vf', f'scale_cuda=-2:{actual_height}',
                 '-c:v', encoder,
                 '-b:v', str(int(target_br / 1000)) + 'k',
                 '-cq', '23',
@@ -276,12 +358,13 @@ def make_multi_output_cmd(
                 f'{target_dir}/{res}.mp4',
             ]
         else:
+            # Программное масштабирование (CPU): scale вместо scale_cuda
             cmd += [
-                '-vf', f'scale_cuda=-2:{actual_height}',
+                '-vf', f'scale={width}:{actual_height}:flags=lanczos',
                 '-c:v', encoder,
                 '-b:v', str(int(target_br / 1000)) + 'k',
-                '-cq', '23',
-                '-preset', 'p4',
+                '-crf', '23',
+                '-preset', 'medium',
                 '-movflags', '+faststart',
                 '-c:a', 'copy',
                 f'{target_dir}/{res}.mp4',
@@ -316,8 +399,9 @@ def upload_video(target_dir: str, video_file: str, title: str, description: str 
     resolutions = ['2160p', '1440p', '1080p', '720p', '480p', '360p']
     resolutions = [r for r in resolutions if int(r[:-1]) <= int(original_scale[:-1])]
 
-    # Фильтруем слишком маленькие разрешения (NVENC минимум)
-    resolutions = [r for r in resolutions if int(r[:-1]) >= NVENC_MIN_DIM]
+    # Фильтруем слишком маленькие разрешения (актуально только для NVENC)
+    if is_nvidia_gpu_available():
+        resolutions = [r for r in resolutions if int(r[:-1]) >= NVENC_MIN_DIM]
 
     if len(resolutions) < 1:
         resolutions = [original_scale]
