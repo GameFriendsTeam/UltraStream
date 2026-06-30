@@ -132,7 +132,7 @@ def update(release: tuple[str, list[dict]]):
             for chunk in response.iter_content(chunk_size=8192):
                 f.write(chunk)
 
-        utils.run_detached_process(["python", updaterF])
+        utils.run_detached_process(["python", updaterF], stdout=open('update.log', "w+b"), stderr=open("update-error.log", "w+b"))
         return True
     except requests.RequestException as e:
         print(f"Error downloading the asset: {e}")
