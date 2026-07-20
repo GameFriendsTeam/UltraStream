@@ -67,6 +67,7 @@ python srv.py
 | `--debug` | `-d` | `False` | Режим отладки Flask |
 | `--video_dir` | `-v` | `videos` | Папка с видео |
 | `--thumbnail_dir` | `-t` | `thumbnail` | Папка с миниатюрами |
+| `--disable-video` | `-dv` | | `False` | Выключает видео (просмотр и публикацию, обычно не рекомендуется) |
 
 Пример:
 
