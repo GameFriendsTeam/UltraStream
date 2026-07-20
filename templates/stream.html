@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Стрим</title>
+<style>
+  body{
+    margin:0; min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background:#0b0d10; color:#9aa1a9;
+    font-family:-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:16px;
+  }
+  .wrap{ width:100%; max-width:960px; }
+  video{
+    width:100%; aspect-ratio:16/9;
+    background:#000; display:block;
+    border-radius:2px;
+  }
+  p{ font-size:13px; text-align:center; margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <video id="video" controls autoplay muted playsinline></video>
+  <p id="msg">Подключение…</p>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js"></script>
+<script>
+  const video = document.getElementById('video');
+  const msg = document.getElementById('msg');
+  const src = {{ hls_url | tojson }};
+
+  if (Hls.isSupported()) {
+    const hls = new Hls({
+        liveSyncDurationCount: 1,
+        liveMaxLatencyDurationCount: 2,
+        maxLiveSyncPlaybackRate: 1.5,
+        enableWorker: true
+    });
+    hls.loadSource(src);
+    hls.attachMedia(video);
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      msg.textContent = 'В эфире';
+      video.play().catch(() => {});
+    });
+    hls.on(Hls.Events.ERROR, (_evt, data) => {
+      if (data.fatal) msg.textContent = 'Нет сигнала — жду OBS…';
+    });
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = src;
+    video.play().catch(() => {});
+  } else {
+    msg.textContent = 'Браузер не поддерживает HLS';
+  }
+</script>
+</body>
+</html>

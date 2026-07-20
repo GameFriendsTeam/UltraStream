@@ -1,8 +1,11 @@
+import atexit
+import json
 from pathlib import Path
 import tempfile
 from flask import Flask, abort, render_template, request, redirect, url_for, flash, Response, send_file, jsonify
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from werkzeug.security import generate_password_hash, check_password_hash
+from rtmp import list_streams, start_rtmp, stop_rtmp, stop_all
 from werkzeug.utils import secure_filename
 from loader import get_videos, upload_video
 from dotenv import load_dotenv
@@ -26,6 +29,7 @@ login_manager.init_app(app)
 login_manager.login_view = 'login'
 
 VERSION = "1.2.0"
+NO_VIDEOS = False
 
 
 def get_version():
@@ -42,7 +46,7 @@ def get_db():
 
 def init_db():
     conn = get_db()
-    # Пользователи
+    # Users
     conn.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -50,7 +54,7 @@ def init_db():
             password TEXT NOT NULL
         )
     ''')
-    # Комментарии
+    # Comments
     conn.execute('''
         CREATE TABLE IF NOT EXISTS comments (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +65,7 @@ def init_db():
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     ''')
-    # История просмотров
+    # Views history
     conn.execute('''
         CREATE TABLE IF NOT EXISTS watch_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,14 +75,14 @@ def init_db():
             UNIQUE(user_id, video_id)
         )
     ''')
-    # Счётчик просмотров
+    # Views counter
     conn.execute('''
         CREATE TABLE IF NOT EXISTS video_views (
             video_id TEXT PRIMARY KEY,
             views INTEGER DEFAULT 0
         )
     ''')
-    # Привязка видео к профилю
+    # Videos on channels
     conn.execute('''
         CREATE TABLE IF NOT EXISTS video_owners (
             video_id TEXT PRIMARY KEY,
@@ -226,6 +230,9 @@ def icon():
 
 @app.route('/watch/<video_id>')
 def watch(video_id):
+    if NO_VIDEOS:
+        abort(Response("Videos disabled. Contact with server admin for request unblock.", status=405))
+
     if video_id not in VIDEOS:
         return "Видео не найдено", 404
 
@@ -404,6 +411,10 @@ def register():
 @login_required
 def upload_page():
     global VIDEOS
+    
+    if NO_VIDEOS:
+        abort(Response("Videos disabled. Contact with server admin for request unblock.", status=405))
+
     if request.method == 'POST':
         if 'video' not in request.files:
             flash('Видео не найдено', 'error')
@@ -481,6 +492,57 @@ def upload_page():
         return redirect(url_for('watch', video_id=video_id))
     return render_template('upload.html', user=current_user)
 
+streams = {}
+keys = {}
+cuids = {}
+@app.route('/stream', methods=['GET'])
+@login_required
+def account_stream():
+    print(current_user.id)
+    if current_user.id in keys:
+        key = keys.get(current_user.id)
+    else:
+        key = str(uuid.uuid8())
+        keys[current_user.id] = key
+    cuids[key] = current_user.id
+   
+    if key in streams:
+        stream_info = streams.get(key)
+    else:
+        stream_info = start_rtmp(key)
+        streams[key] = stream_info
+
+    return Response(
+        f"""Copy and past in OSB Studio stream url: {str(stream_info.get("rtmp_url")).replace("0.0.0.0", request.host.split(":")[0])}.
+        And stream key: {key}""",
+        status=201
+    )
+
+
+@app.route('/stream/<stream_id>')
+def watch_stream(stream_id):
+    return render_template("stream.html", hls_url=f"/static/stream/{stream_id}/index.m3u8")
+
+
+@app.route('/stop/<stream_id>', methods=['POST'])
+def get_stream(stream_id):
+    print()
+    key = json.loads(request.get_data()).get("stream_key")
+    if not key or key not in streams or key not in cuids:
+        abort(Response("STREAM KEY DOESN'T EXISTS", 404))
+    
+    del keys[cuids[key]]
+    del cuids[key]
+    if not stop_rtmp(stream_id):
+        abort(Response("STREAM DOESN'T EXISTS", 404))
+    del streams[key]
+    return Response(status=200)
+
+
+@app.route("/streams/ls", methods=['GET'])
+def stream_ls():
+    return list(list_streams())
+
 
 @app.route('/logout')
 @login_required
@@ -488,11 +550,13 @@ def logout():
     logout_user()
     return redirect(url_for('login'))
 
-# ==================== СТРИМИНГ ВИДЕО ====================
+# ==================== СТРИМИНГ ====================
 
 
 @app.route('/video/<video_id>/<quality>')
 def serve_video(video_id, quality):
+    if NO_VIDEOS:
+        abort(Response("Videos disabled. Contact with server admin for request unblock.", status=405))
     path = get_video_path(video_id, quality)
     if not path:
         abort(404)
@@ -553,7 +617,7 @@ def thumbnail_serve(thumbnail_name):
 if __name__ == '__main__':
     import argparse
     parser = argparse.ArgumentParser(
-        description='Запуск Flask-сервера для видео-платформы')
+        description='Start UltraStream')
     parser.add_argument('--host', '-H', default='0.0.0.0')
     parser.add_argument('--port', '-p', type=int, default=5000)
     parser.add_argument('--debug', '-d', action='store_true')
@@ -561,8 +625,12 @@ if __name__ == '__main__':
     parser.add_argument('--thumbnail_dir', '-t', default='thumbnail')
     parser.add_argument('--version', '-V', action='store_true')
     parser.add_argument('--no-check-update', '-N', action='store_true')
+    parser.add_argument('--disable-video', "-dv", action="store_true")
 
     args = parser.parse_args()
+
+    NO_VIDEOS = args.disable_video
+    atexit.register(stop_all)
 
     if args.version:
         print(f"UltraStream {get_version()}")

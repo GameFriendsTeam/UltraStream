@@ -3,3 +3,4 @@ thumbnail
 __pycache__
 users.db
 .env
+static
