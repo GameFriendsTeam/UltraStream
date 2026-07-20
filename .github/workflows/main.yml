@@ -41,6 +41,10 @@ jobs:
         run: |
           python -c "import thumbnail"
           python -c "import loader"
+          python -c "import rtmp"
+          python -c "import updater"
+          python -c "import utils"
+          python -c "import srv"
         env:
           FLASK_ENV: testing
 
