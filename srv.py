@@ -626,6 +626,9 @@ if __name__ == '__main__':
     parser.add_argument('--version', '-V', action='store_true')
     parser.add_argument('--no-check-update', '-N', action='store_true')
     parser.add_argument('--disable-video', "-dv", action="store_true")
+    parser.add_argument("--cert-file", "-cf", default=None)
+    parser.add_argument("--key-file", "-kf", default=None)
+    parser.add_argument("--use-adhoc", "-ua", action="store_true")
 
     args = parser.parse_args()
 
@@ -657,4 +660,10 @@ if __name__ == '__main__':
     VIDEOS = get_videos(args.video_dir)
     thumbnail.standard_dir = args.thumbnail_dir
 
-    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
+    context = None
+    if args.cert_file and args.key_file:
+        context = (args.cert_file, args.key_file)
+    if not context and args.use_adhoc:
+        context = "adhoc"
+
+    app.run(host=args.host, port=args.port, debug=args.debug, threaded=True, ssl_context=context)

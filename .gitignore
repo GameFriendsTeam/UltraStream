@@ -1,6 +1,10 @@
+.idea
+.env
+__pycache__
 videos
 thumbnail
-__pycache__
 users.db
-.env
 static
+*.pem
+*.crt
+*.key
